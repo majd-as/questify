@@ -1,0 +1,31 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Questify - Admin Dashboard
+{% endblock %}
+
+{% block content %}
+    <!-- Breadcrumbs -->
+    <nav class="breadcrumbs">
+        <a href="/">Home</a> <span>&gt;</span>
+        <a href="/admin_dashboard">Admin Dashboard</a>
+    </nav>
+
+        <!-- Test Button to Navigate to survey_create.html -->
+    <section id="test-button-section">
+        <div class="section-title-layout">
+            Development
+        </div>
+
+        <p>
+            Here are some test-buttons for testing app functions:
+        </p>
+
+        <a href="/survey_list" class="nav-button">Survey List</a>
+        <a href="/create_survey" class="nav-button">Create Survey</a>
+        <a href="/question_types" class="nav-button">Question Types</a>
+
+    </section>
+
+
+{% endblock %}

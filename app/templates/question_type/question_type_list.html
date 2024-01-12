@@ -1,0 +1,105 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Questify - Question Types
+{% endblock %}
+
+{% block content %}
+    <!-- Breadcrumbs -->
+    <nav class="breadcrumbs">
+        <a href="/">Home</a> <span>&gt;</span>
+        <a href="/admin_dashboard">Admin Dashboard</a> <span>&gt;</span>
+        <span>Question Types</span>
+    </nav>
+
+    <div class="section-title-layout">
+        Question Types
+    </div>
+
+    <!-- New button to create a new question type -->
+    <a href="/question_types/create" class="nav-button">Create New Type</a>
+
+    <table class="table-layout">
+        <thead>
+            <tr>
+                <th>Question Type</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            <!-- Loop through the question types and list them -->
+            {% for question_type in question_types %}
+            <tr id="row-{{ question_type.id }}" class="question-type-row">
+                <td>
+                    <a href="{{ url_for('question_type_view', id=question_type.id) }}">{{ question_type.type_name }}</a>
+                </td>
+                <td>
+                    <div class="btn-group">
+                        <!-- Lock/Unlock Button -->
+                        <button class="icon-button" onclick="toggleLock({{ question_type.id }})">
+                            <span class="fa fa-unlock" id="lock-icon-{{ question_type.id }}"></span>
+                        </button>
+
+                        <!-- Update Question Type Button -->
+                        <a class="icon-button icon-button-update" href="{{ url_for('question_type_update', id=question_type.id) }}" id="update-button-{{ question_type.id }}"><span></span></a>
+
+                        <!-- Delete Question Type Button -->
+                        <button type="button" class="icon-button icon-button-delete" onclick="confirmDelete({{ question_type.id }})" id="delete-button-{{ question_type.id }}"></button>
+                    </div>
+                </td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <script>
+        function confirmDelete(id) {
+            if (confirm("Are you sure you want to delete this question type?")) {
+                // Perform the delete action
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = `/question_types/${id}/delete`;
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+
+        function toggleLock(id) {
+            const row = document.getElementById(`row-${id}`);
+            const lockIcon = document.getElementById(`lock-icon-${id}`);
+            const isLocked = lockIcon.classList.contains('fa-lock');
+            const updateButton = document.getElementById(`update-button-${id}`);
+            const deleteButton = document.getElementById(`delete-button-${id}`);
+
+            if (isLocked) {
+                lockIcon.classList.remove('fa-lock');
+                lockIcon.classList.add('fa-unlock');
+                row.classList.remove('locked-row');
+                updateButton.classList.remove('disabled');
+                deleteButton.classList.remove('disabled');
+            } else {
+                lockIcon.classList.add('fa-lock');
+                lockIcon.classList.remove('fa-unlock');
+                row.classList.add('locked-row');
+                updateButton.classList.add('disabled');
+                deleteButton.classList.add('disabled');
+            }
+        }
+    </script>
+    <style>
+        .locked-row {
+            background-color: rgba(0, 0, 0, 0.1); /* Slightly darker background for locked rows */
+        }
+
+        /* Additional styles for lock/unlock icons */
+        .icon-button .fa-lock,
+        .icon-button .fa-unlock {
+            font-size: 14px;
+        }
+
+        .icon-button.disabled {
+            opacity: 0.5;
+            pointer-events: none;
+        }
+    </style>
+{% endblock %}

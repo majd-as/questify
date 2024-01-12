@@ -1,0 +1,32 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Create New Question Type
+{% endblock %}
+
+{% block content %}
+    <!-- Breadcrumbs -->
+    <nav class="breadcrumbs">
+        <a href="/">Home</a> <span>&gt;</span>
+        <a href="/admin_dashboard">Admin Dashboard</a> <span>&gt;</span>
+        <a href="/question_types">Question Types</a> <span>&gt;</span>
+        <span>Create</span>
+    </nav>
+
+    <div class="section-layout">
+        <div class="section-title-layout">
+            Create New Question Type
+        </div>
+
+        <form action="{{ url_for('question_type_create') }}" method="POST" class="border-collect-elements">
+            <div class="common-row mb-3">
+                <label for="type-name" class="form-label common-text">Type Name</label>
+                <input type="text" class="input-field" id="type-name" name="type_name" required>
+            </div>
+
+            <div class="common-row">
+                <button type="submit" class="button-primary">Create</button>
+            </div>
+        </form>
+    </div>
+{% endblock %}

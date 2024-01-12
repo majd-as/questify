@@ -1,0 +1,436 @@
+/* ==========================================================================
+   Table of Contents:
+   1. Global Reset
+   2. Color Palette
+   3. Typography
+   4. Breadcrumbs
+   5. Layouts
+   6. Buttons
+   7. Forms
+   8. Footer
+   9. Tables
+   ========================================================================== */
+
+/* ==========================================================================
+   1. Global Reset
+   ========================================================================== */
+body, ul, input, button, textarea {
+    margin: 0;
+    padding: 0;
+}
+
+/* ==========================================================================
+   2. Color Palette
+   ========================================================================== */
+:root {
+    --primary-red: #ed1b34;
+    --secondary-blue: #236c8f;
+    --neutral-gray: #555555;
+    --light-gray: #ececec;
+}
+
+/* ==========================================================================
+   3. Typography
+   ========================================================================== */
+.common-text, h1, h2, h4 {
+    font-family: 'FedraSansBold', Helvetica, Arial, Lucida, sans-serif;
+    font-weight: bold;
+}
+
+.common-text {
+    color: var(--neutral-gray);
+}
+
+.common-heading {
+    color: var(--primary-red);
+}
+
+/* ==========================================================================
+   4.Breadcrumbs
+   ========================================================================== */
+.breadcrumbs {
+    font-size: 14px;
+    margin-bottom: 20px;
+    color: var(--light-gray);
+}
+
+.breadcrumbs a {
+    text-decoration: none;
+    color: var(--primary-red);
+}
+
+.breadcrumbs span {
+    color: var(--neutral-gray);  /* Or whatever color you prefer */
+}
+
+.breadcrumbs a:hover {
+    text-decoration: underline;
+}
+
+
+/* ==========================================================================
+   5. Layouts
+   ========================================================================== */
+body {
+    display: flex;
+    flex-direction: column;
+    min-height: 100vh;
+    background-color: #f7f7f7;
+}
+
+main {
+    flex: 1;
+}
+
+.large-title-layout {
+    font-size: 36px;
+    margin-bottom: 20px;
+    font-weight: bold;
+    color: var(--neutral-gray);
+}
+
+.section-title-layout {
+    font-size: 24px;
+    margin-bottom: 20px;
+    font-weight: bold;
+    color: var(--primary-red);
+}
+
+.section-layout {
+    margin-top: 15px;
+}
+
+.common-list, ul {
+    list-style: none;
+}
+
+.common-row {
+    margin-bottom: 15px;
+}
+
+.button-row {
+    display: flex;
+    justify-content: space-between;
+}
+
+.flash-message {
+    background-color: var(--primary-red);
+    border-radius: 5px;
+    padding: 15px;
+    margin-bottom: 20px;
+    color: var(--light-gray);
+    font-family: 'FedraSansBold', Helvetica, Arial, Lucida, sans-serif;
+    font-size: 16px;
+    text-align: center;
+}
+
+
+.border-collect-elements{
+    border: 2px solid var(--neutral-gray);
+    padding: 15px;
+    margin: 15px 0;
+    border-radius: 10px;
+    position: relative;
+}
+
+.light-border-collect-elements{
+    border: 1px solid var(--neutral-gray);
+    padding: 15px;
+    margin: 15px 0;
+    border-radius: 10px;
+}
+
+/* Styling the question-group div */
+.question-group {
+    border: 1px solid var(--light-gray);
+    border-radius: 10px;
+    margin-bottom: 20px;
+    padding: 20px;
+}
+
+/* ==========================================================================
+   6. Buttons
+   ========================================================================== */
+.button-primary, .button-secondary {
+    border-radius: 4px;  /* Updated to match .nav-button */
+    padding: 12px 24px;
+    font-size: 16px;
+    transition: background-color 0.3s ease;
+}
+
+.button-primary {
+    background-color: var(--light-gray);
+    color: var(--primary-red);
+}
+
+.button-primary:hover {
+    background-color: var(--neutral-gray);
+}
+
+.button-secondary {
+    background-color: var(--secondary-blue);
+    color: white;
+}
+
+.button-secondary:hover {
+    background-color: var(--neutral-gray);
+}
+
+    /*__________________________*/
+
+.button-delete {
+    background-color: var(--primary-red);
+    color: white;
+    padding: 10px 20px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+}
+
+.button-delete:hover {
+    background-color: var(--neutral-gray);
+}
+
+    /*__________________________*/
+
+
+/* Icon Button Styling */
+.icon-button {
+    display: inline-block;
+    background-color: var(--primary-red);
+    color: white;
+    padding: 10px;
+    border-radius: 4px;
+    border: none;
+    cursor: pointer;
+    font-family: "FontAwesome", sans-serif;
+    font-size: 14px; /* Adjust the size of the icon as needed */
+    text-align: center;
+    width: 36px; /* Ensures all buttons have the same width */
+    height: 36px; /* Ensures all buttons have the same height */
+}
+
+.icon-button:hover {
+    background-color: var(--neutral-gray);
+}
+
+.icon-button::before {
+    display: block;
+}
+
+/* Specific Icon Adjustments */
+.icon-button-update::before {
+    content: "\f040"; /* FontAwesome pencil icon */
+}
+
+.icon-button-duplicate::before {
+    content: "\f0c5"; /* FontAwesome copy icon */
+}
+
+.icon-button-delete::before {
+    content: "\f1f8"; /* FontAwesome trash icon */
+}
+
+    /*__________________________*/
+
+.nav-button {
+    display: inline-block;
+    padding: 10px 20px;
+    margin: 10px;
+    background-color: var(--light-gray);
+    color: var(--primary-red);
+    text-align: center;
+    border-radius: 4px;
+    text-decoration: none;
+}
+
+.nav-button:hover {
+    background-color: var(--neutral-gray);
+}
+
+
+/* Style for the "Add Question" button within a group */
+.add-question-button {
+    position: absolute;
+    bottom: 10px;
+    left: 10px;
+}
+
+/* Style for the "Delete Group" and "Add Question" buttons */
+.group-buttons {
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+}
+
+    /*__________________________*/
+
+
+.button-container {
+  display: flex;
+  justify-content: center;
+  gap: 10px; /* Space between buttons */
+  flex-wrap: wrap; /* Wrap buttons on smaller screens */
+  margin-bottom: 20px; /* Space below the button container */
+}
+
+.button-secondary, .button-primary, .button-delete {
+    flex: 1 1 auto; /* Allow buttons to grow and shrink as needed */
+    min-width: 120px; /* Minimum width of buttons */
+    text-align: center; /* Center button text */
+      text-decoration: none;
+}
+
+/* Responsive design for smaller screens */
+@media (max-width: 600px) {
+  .button-container {
+    flex-direction: column; /* Stack buttons vertically */
+  }
+  .button-secondary, .button-primary, .button-delete {
+    width: 100%; /* Full width buttons on small screens */
+    display: block; /* Block display for full width */
+  }
+}
+
+    .options-container .option-label {
+        display: block; /* changes the layout of the label elements to block, making them stack vertically */
+        margin-bottom: 5px; /* adds some space between the options */
+    }
+
+/* ==========================================================================
+   7. Forms
+   ========================================================================== */
+.input-field {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 10px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+}
+
+.required-field {
+    border-color: var(--primary-red);
+}
+
+.focused-field {
+    outline: none;
+    border-color: var(--secondary-blue);
+}
+
+.input-integer {
+    font-size: 16px;
+    padding: 10px;
+    width: 100%;
+    border: none;
+    border-radius: 8px;
+    background-color: var(--light-gray);
+}
+
+.input-integer:focus {
+    box-shadow: 0 0 0 2px var(--primary-red);
+    outline: none;
+}
+
+/* ==========================================================================
+   8. Footer
+   ========================================================================== */
+footer {
+    flex-shrink: 0;
+    background-color: var(--light-gray);
+    text-align: center;
+    padding: 15px;
+}
+
+/* ==========================================================================
+   9. Tables
+   ========================================================================== */
+
+.table-responsive {
+    overflow-x: auto;
+}
+
+.table-layout {
+    width: 100%;
+    min-width: 600px;
+    border-collapse: collapse;
+    margin-top: 20px;
+    table-layout: fixed;
+}
+
+.table-layout th,
+.table-layout td {
+    border: 1px solid #ddd;
+    padding: 8px;
+    text-align: left;
+    /* Adjusted properties for text wrapping */
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+}
+
+.table-layout th {
+    background-color: var(--light-gray);
+    color: var(--neutral-gray);
+}
+
+.table-layout tr:hover {
+    background-color: #f2f2f2;
+}
+
+.btn-group {
+    display: flex;
+    gap: 10px; /* Ensures consistent spacing between buttons */
+}
+
+.nav-button, .icon-button-delete {
+    margin: 2px; /* Add some space around buttons */
+    white-space: nowrap; /* Prevents text wrapping inside buttons */
+}
+
+/* Responsive behavior for buttons */
+@media screen and (max-width: 600px) {
+    .nav-button, .icon-button-delete {
+        flex-basis: 100%; /* Stack buttons vertically on smaller screens */
+        margin-bottom: 5px; /* Add more space between stacked buttons */
+    }
+}
+
+
+/* drop-down  */
+
+.dropdown-select {
+    font-size: 16px;
+    padding: 10px;
+    width: 100%;
+    border: none;
+    border-radius: 8px;
+    box-shadow: 0 3px 6px rgba(0,0,0,0.16);
+    appearance: none; /* Remove default appearance */
+    background-color: var(--light-gray);
+    background-image: url('data:image/svg+xml;utf8,<svg fill="black" viewBox="0 0 256 256" xmlns="http://www.w3.org/2000/svg"><path d="M128 160l64-64H64l64 64z"/></svg>'); /* Add a custom arrow */
+    background-position: right 15px center; /* Position the arrow */
+    background-repeat: no-repeat;
+    background-size: 20px;
+}
+
+.dropdown-select:focus {
+    box-shadow: 0 0 0 2px var(--primary-red);
+    outline: none;
+}
+
+/* Option styling (note: not all browsers support this) */
+.dropdown-select option {
+    padding: 10px;
+}
+
+/* Styling for Sorting Arrows */
+.table-layout th a {
+    margin-left: 5px;
+    color: var(--primary-red);
+    text-decoration: none;
+}
+
+.table-layout th a:hover {
+    text-decoration: underline;
+}
+

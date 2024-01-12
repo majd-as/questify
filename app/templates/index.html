@@ -1,0 +1,85 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Questify - Home
+{% endblock %}
+
+{% block content %}
+    <!-- Breadcrumbs -->
+    <nav class="breadcrumbs">
+        <a href="/">Home</a>
+    </nav>
+
+    <!-- Main body -->
+    <div class="container content-layout">
+        <div class="row">
+            <!-- Title -->
+            <div class="large-title-layout">
+                Welcome to the Questify application
+            </div>
+            <!-- Description about the app -->
+            <div class="col-md-8">
+                    <div class="section-title-layout">
+                        Here we give you some explanation about this application
+                    </div>
+                    <p>
+                        Questify is a survey application that allows users to create, share, and participate in surveys.
+                        Built with a focus on user experience and data integrity, it aims to provide an intuitive and reliable way to gather insights.
+                    </p>
+            </div>
+
+            <!-- Log in and Taking a Survey sections -->
+            <div class="col-md-4">
+                <!-- Log in section -->
+                <section>
+                    <div class="section-title-layout">
+                        Login:
+                    </div>
+                    {% with messages = get_flashed_messages() %}
+                        {% if messages %}
+                            <ul class="flash-messages">
+                                {% for message in messages %}
+                                    <li>{{ message }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    {% endwith %}
+                    <form method="POST" action="/" class="border-collect-elements">
+                        <div class="input-field">
+                            <label for="username">Username:</label>
+                            <input type="text" class="input-field" id="username" name="username" required>
+                        </div>
+                        <div class="input-field">
+                            <label for="password">Password:</label>
+                            <input type="password" class="input-field" id="password" name="password" required>
+                        </div>
+                        <button type="submit" class="button-primary mt-3">Login</button>
+                    </form>
+                </section>
+
+                <hr>
+
+                <!-- Taking a Survey -->
+                <section>
+                    <div class="section-title-layout">
+                        Taking a Survey:
+                    </div>
+                    <p>
+                        To participate in a survey, enter the survey code or URL below.
+                    </p>
+                    <form action="/take_survey" method="POST" class="border-collect-elements">
+                        <div class="input-field">
+                            <label for="survey-url">Survey URL:</label>
+                            <input type="url" class="input-field" id="survey-url" name="survey_url" required>
+                        </div>
+                        <div class="input-field">
+                            <label for="survey-code">Survey Code:</label>
+                            <input type="text" class="input-field" id="survey-code" name="survey_code" required>
+                        </div>
+                        <button type="submit" class="button-primary mt-3">Take Survey</button>
+                    </form>
+                </section>
+            </div>
+        </div>
+    </div>
+{% endblock %}

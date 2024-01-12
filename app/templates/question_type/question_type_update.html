@@ -1,0 +1,57 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Questify - Update Question Type
+{% endblock %}
+
+{% block content %}
+    <!-- Breadcrumbs -->
+    <nav class="breadcrumbs">
+        <a href="/">Home</a> <span>&gt;</span>
+        <a href="/admin_dashboard">Admin Dashboard</a> <span>&gt;</span>
+        <a href="/question_types">Question Types</a> <span>&gt;</span>
+        <span>Update</span>
+    </nav>
+
+    <div class="section-layout">
+        <div class="section-title-layout">
+            Update Question Type
+        </div>
+
+        <form method="POST" class="border-collect-elements">
+            <div class="common-row mb-3">
+                <label for="type_name" class="form-label common-text">Type Name</label>
+                <input type="text" class="input-field" id="type_name" name="type_name" value="{{ question_type.type_name }}" required>
+            </div>
+            <div class="common-row button-row">
+                <button type="button" class="button-secondary" onclick="confirmUpdate()">Update</button>
+                <button type="button" class="button-delete" onclick="confirmDelete({{ question_type.id }})">Delete</button>
+            </div>
+
+        </form>
+
+    </div>
+
+    <script>
+
+        function confirmUpdate() {
+            if (confirm("Are you sure you want to update this question type?")) {
+                // If confirmed, submit the form for updating
+                const form = document.querySelector('form');
+                form.submit();
+            }
+        }
+
+        function confirmDelete(id) {
+            if (confirm("Are you sure you want to delete this question type?")) {
+                // If confirmed, submit the form for deletion
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = `/question_types/${id}/delete`;
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+    </script>
+
+{% endblock %}

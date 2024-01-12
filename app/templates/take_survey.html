@@ -1,0 +1,204 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Take Survey - {{ survey.survey_title }}
+{% endblock %}
+
+{% block content %}
+    <!-- Breadcrumbs -->
+    <nav class="breadcrumbs">
+        <a href="/">Home</a> <span>&gt;</span>
+        <a href="/survey_list">Surveys</a> <span>&gt;</span>
+        <span>{{ survey.survey_title }}</span>
+    </nav>
+
+    <div class="section-title-layout">
+        {{ survey.survey_title }}
+    </div>
+
+    <!-- Survey Welcome Message -->
+    <div class="survey-welcome-message">
+        <p>{{ survey.welcome_message }}</p>
+    </div>
+
+    <!-- Survey Form -->
+    <form action="{{ url_for('take_survey', survey_id=survey.id) }}" method="POST" class="survey-form">
+        {% for group in survey.question_groups %}
+            <div class="border-collect-elements">
+                <h3 class="section-title-layout">Group {{ loop.index }}: {{ group.group_name }}</h3>
+                <p class="section-layout">{{ group.group_description }}</p>
+                {% for question in group.questions %}
+                    <div class="light-border-collect-elements">
+                        <h6 class="section-layout">{{ loop.index }}. {{ question.question_text }}</h6>
+                        {% if question.question_type_id == question_type_mapping['open-ended'] %}
+                            <textarea name="question_{{ question.id }}" class="input-field question-input" placeholder="Your answer..."></textarea>
+                        {% elif question.question_type_id == question_type_mapping['multiple-choice'] %}
+                            <div class="options-container">
+                                {% for option in question.question_options %}
+                                    <label class="option-label">
+                                        <input type="radio" name="question_{{ question.id }}" value="{{ option.option_text }}" class="question-input">
+                                        {{ option.option_text }}
+                                    </label>
+                                {% endfor %}
+                            </div>
+                        {% elif question.question_type_id == question_type_mapping['rating-scale'] %}
+                            <div class="rating-scale">
+                                <label for="range_{{ question.id }}">Rating ({{ question.rating_scale.min_value }} to {{ question.rating_scale.max_value }}):</label>
+                                <input type="range" id="range_{{ question.id }}" name="question_{{ question.id }}" min="{{ question.rating_scale.min_value }}" max="{{ question.rating_scale.max_value }}" step="{{ question.rating_scale.step }}" value="{{ question.rating_scale.min_value }}" oninput="updateOutput(this)">
+                                <div class="scale-labels" id="labels_{{ question.id }}"></div>
+                                <div class="scale-steps" id="steps_{{ question.id }}"></div>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endfor %}
+
+        <!-- Survey Exit Message -->
+        <div class="border-collect-elements">
+            <p class="section-layout">{{ survey.exit_message }}</p>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="button-row">
+            <button type="submit" class="button-secondary">Submit Survey</button>
+        </div>
+    </form>
+
+    <script>
+        document.querySelectorAll('.rating-scale input[type=range]').forEach(function(rangeInput) {
+            rangeInput.addEventListener('input', function() {
+                const value = (this.value - this.min) / (this.max - this.min) * 100;
+                this.style.background = 'linear-gradient(to right, var(--primary-red) ' + value + '%, var(--light-gray) ' + value + '%)';
+            });
+            // Initialize the correct background for each slider on page load
+            const value = (rangeInput.value - rangeInput.min) / (rangeInput.max - rangeInput.min) * 100;
+            rangeInput.style.background = 'linear-gradient(to right, var(--primary-red) ' + value + '%, var(--light-gray) ' + value + '%)';
+            createScaleLabels(rangeInput);
+        });
+
+        function createScaleLabels(rangeInput) {
+            const min = parseInt(rangeInput.min);
+            const max = parseInt(rangeInput.max);
+            const step = parseInt(rangeInput.step);
+            const labelsContainer = document.getElementById('labels_' + rangeInput.id.split('_')[1]);
+            labelsContainer.innerHTML = ''; // Clear any existing labels
+
+            for (let i = min; i <= max; i += step) {
+                const labelDiv = document.createElement('div');
+                labelDiv.className = 'label';
+                labelDiv.innerText = i;
+                // Calculate label position
+                const pos = ((i - min) / (max - min)) * 100;
+                labelDiv.style.left = pos + '%';
+                labelsContainer.appendChild(labelDiv);
+            }
+        }
+
+
+            // Add an event listener to the form submission
+    document.querySelector('.survey-form').addEventListener('submit', function(event) {
+        const questions = document.querySelectorAll('.question-input');
+        let allAnswered = true;
+
+        questions.forEach(question => {
+            // For multiple-choice, check if any option is checked
+            if (question.type === 'radio' && !document.querySelector('input[name="' + question.name + '"]:checked')) {
+                allAnswered = false;
+            }
+            // For open-ended, check if it's not empty
+            else if (question.type === 'textarea' && !question.value.trim()) {
+                allAnswered = false;
+            }
+        });
+
+        if (!allAnswered) {
+            alert('Please answer all questions before submitting.');
+            event.preventDefault(); // Prevent the form from being submitted
+            // Optionally, scroll to the first unanswered question
+            // Find the first unanswered question and focus on it
+            const firstUnanswered = Array.from(questions).find(question => {
+                return question.type === 'radio' ? !document.querySelector('input[name="' + question.name + '"]:checked') : !question.value.trim();
+            });
+            firstUnanswered.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            firstUnanswered.focus();
+        }
+    });
+
+    </script>
+
+<style>
+    .rating-scale {
+        margin: 20px 0;
+        width: 100%;
+        position: relative;
+    }
+
+    .rating-scale input[type=range] {
+        -webkit-appearance: none;
+        width: 100%;
+        height: 10px; /* Thicker track for better usability */
+        background: var(--light-gray);
+        outline: none;
+        border-radius: 5px;
+        position: relative;
+        margin-top: 2px; /* Adjusted space for the labels */
+        transition: background 0.3s ease; /* Smooth transition for the background */
+    }
+
+    /* Webkit specific styles */
+    .rating-scale input[type=range]::-webkit-slider-runnable-track {
+        height: 15px;
+        border-radius: 5px;
+    }
+
+    .rating-scale input[type=range]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        border: none;
+        height: 15px; /* Larger thumb for better grab */
+        width: 15px; /* Keep a square shape */
+        border-radius: 50%;
+        background: var(--primary-red);
+        cursor: pointer;
+        box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.2); /* Subtle shadow for depth */
+        position: relative;
+        z-index: 2; /* Ensure it's above other elements */
+    }
+
+    /* Mozilla specific styles */
+    .rating-scale input[type=range]::-moz-range-track {
+        height: 15px;
+        border-radius: 5px;
+    }
+
+    .rating-scale input[type=range]::-moz-range-thumb {
+        height: 25px;
+        width: 25px;
+        border-radius: 50%;
+        background: var(--primary-red);
+        cursor: pointer;
+        box-shadow: 0px 2px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    /* Labels for the steps */
+    .rating-scale .scale-labels {
+        display: flex;
+        justify-content: space-between;
+        position: absolute;
+        width: calc(100% - 25px); /* Adjust width to account for thumb size */
+        left: 10px; /* Align with the start of the track */
+        right: 10px; /* Align with the end of the track */
+    }
+
+    .rating-scale .label {
+        position: absolute;
+        display: block;
+        text-align: center;
+        font-size: 0.8em;
+        color: var(--neutral-gray);
+        transform: translateX(-50%); /* Center the labels above ticks */
+    }
+</style>
+
+
+{% endblock %}

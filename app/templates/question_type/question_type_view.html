@@ -1,0 +1,43 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Questify - View Question Type
+{% endblock %}
+
+{% block content %}
+    <!-- Breadcrumbs -->
+    <nav class="breadcrumbs">
+        <a href="/">Home</a> <span>&gt;</span>
+        <a href="/admin_dashboard">Admin Dashboard</a> <span>&gt;</span>
+        <a href="/question_types">Question Types</a> <span>&gt;</span>
+        <span>View</span>
+    </nav>
+
+    <div class="section-layout">
+
+        <form method="POST" class="border-collect-elements">
+            <div class="section-layout">
+            {{ question_type.type_name }}
+            </div>
+
+            <div class="common-row button-row">
+                <span class="placeholder"></span>  <!-- Empty placeholder for alignment -->
+                <button type="button" class="button-delete" onclick="confirmDelete({{ question_type.id }})">Delete</button>
+            </div>
+        </form>
+    </div>
+
+    <script>
+        function confirmDelete(id) {
+            if (confirm("Are you sure you want to delete this question type?")) {
+                // If confirmed, submit the form for deletion
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.action = `/question_types/${id}/delete`;
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+    </script>
+
+{% endblock %}
