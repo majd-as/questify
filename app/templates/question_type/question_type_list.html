@@ -29,22 +29,22 @@
         <tbody>
             <!-- Loop through the question types and list them -->
             {% for question_type in question_types %}
-            <tr id="row-{{ question_type.id }}" class="question-type-row">
+            <tr id="row-{{ question_type.id }}" class="question-type-row {{ 'locked-row' if question_type.is_locked }}">
                 <td>
                     <a href="{{ url_for('question_type_view', id=question_type.id) }}">{{ question_type.type_name }}</a>
                 </td>
                 <td>
                     <div class="btn-group">
-                        <!-- Lock/Unlock Button -->
-                        <button class="icon-button" onclick="toggleLock({{ question_type.id }})">
-                            <span class="fa fa-unlock" id="lock-icon-{{ question_type.id }}"></span>
+                        <!-- Lock/Unlock Button, assuming unlocked by default -->
+                        <button class="icon-button {{ 'icon-button-lock' if question_type.is_locked else 'icon-button-unlock' }}" onclick="toggleLock({{ question_type.id }})" id="lock-button-{{ question_type.id }}">
+                            <i class="fa {{ 'fa-lock' if question_type.is_locked else 'fa-unlock' }}" id="lock-icon-{{ question_type.id }}"></i>
                         </button>
 
-                        <!-- Update Question Type Button -->
-                        <a class="icon-button icon-button-update" href="{{ url_for('question_type_update', id=question_type.id) }}" id="update-button-{{ question_type.id }}"><span></span></a>
+                        <!-- Update Question Type Button - Adjust class and href based on is_locked -->
+                        <a class="icon-button icon-button-update {{ 'disabled' if question_type.is_locked }}" href="{{ 'javascript:void(0);' if question_type.is_locked else url_for('question_type_update', id=question_type.id) }}" id="update-button-{{ question_type.id }}" style="{{ 'pointer-events: none;' if question_type.is_locked }}"></a>
 
-                        <!-- Delete Question Type Button -->
-                        <button type="button" class="icon-button icon-button-delete" onclick="confirmDelete({{ question_type.id }})" id="delete-button-{{ question_type.id }}"></button>
+                        <!-- Delete Question Type Button - Adjust class based on is_locked -->
+                        <button type="button" class="icon-button icon-button-delete {{ 'disabled' if question_type.is_locked }}" onclick="{{ 'return false;' if question_type.is_locked else 'confirmDelete(' + question_type.id|string + ');' }}" id="delete-button-{{ question_type.id }}"></button>
                     </div>
                 </td>
             </tr>
@@ -65,41 +65,41 @@
         }
 
         function toggleLock(id) {
-            const row = document.getElementById(`row-${id}`);
-            const lockIcon = document.getElementById(`lock-icon-${id}`);
-            const isLocked = lockIcon.classList.contains('fa-lock');
-            const updateButton = document.getElementById(`update-button-${id}`);
-            const deleteButton = document.getElementById(`delete-button-${id}`);
+            fetch(`/question_types/${id}/toggle_lock`, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                const lockIcon = document.getElementById(`lock-icon-${id}`);
+                const lockButton = document.getElementById(`lock-button-${id}`);
+                const row = document.getElementById(`row-${id}`);
+                const updateButton = document.getElementById(`update-button-${id}`);
+                const deleteButton = document.getElementById(`delete-button-${id}`);
 
-            if (isLocked) {
-                lockIcon.classList.remove('fa-lock');
-                lockIcon.classList.add('fa-unlock');
-                row.classList.remove('locked-row');
-                updateButton.classList.remove('disabled');
-                deleteButton.classList.remove('disabled');
-            } else {
-                lockIcon.classList.add('fa-lock');
-                lockIcon.classList.remove('fa-unlock');
-                row.classList.add('locked-row');
-                updateButton.classList.add('disabled');
-                deleteButton.classList.add('disabled');
-            }
+                if (data.isLocked) {
+                    lockIcon.classList.remove('fa-unlock');
+                    lockIcon.classList.add('fa-lock');
+                    lockButton.classList.add('icon-button-lock');
+                    lockButton.classList.remove('icon-button-unlock');
+                    row.classList.add('locked-row');
+                    updateButton.classList.add('disabled');
+                    deleteButton.classList.add('disabled');
+                    // Disable the href attribute for the update button
+                    updateButton.href = "javascript:void(0)";
+                    updateButton.style.pointerEvents = "none";
+                } else {
+                    lockIcon.classList.add('fa-unlock');
+                    lockIcon.classList.remove('fa-lock');
+                    lockButton.classList.remove('icon-button-lock');
+                    lockButton.classList.add('icon-button-unlock');
+                    row.classList.remove('locked-row');
+                    updateButton.classList.remove('disabled');
+                    deleteButton.classList.remove('disabled');
+                    // Restore the href attribute for the update button
+                    updateButton.href = `/question_types/${id}/update`;
+                    updateButton.style.pointerEvents = "auto";
+                }
+            })
+            .catch(error => console.error('Error:', error));
         }
     </script>
-    <style>
-        .locked-row {
-            background-color: rgba(0, 0, 0, 0.1); /* Slightly darker background for locked rows */
-        }
 
-        /* Additional styles for lock/unlock icons */
-        .icon-button .fa-lock,
-        .icon-button .fa-unlock {
-            font-size: 14px;
-        }
-
-        .icon-button.disabled {
-            opacity: 0.5;
-            pointer-events: none;
-        }
-    </style>
 {% endblock %}

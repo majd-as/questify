@@ -1,0 +1,436 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Questify - Update Survey
+{% endblock %}
+
+{% block content %}
+    <!-- Breadcrumbs -->
+    <nav class="breadcrumbs">
+        <a href="/">Home</a> <span>&gt;</span>
+        <a href="/survey_list">Surveys</a> <span>&gt;</span>
+        <span>Update</span>
+    </nav>
+
+    <div class="section-title-layout">
+        Update Survey
+    </div>
+
+
+    <!-- Display Flash Messages -->
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        {% endif %}
+    {% endwith %}
+
+    <!-- Update Survey Form -->
+    <form action="{{ url_for('update_survey', survey_id=survey.id) }}" method="POST" class="form-layout">
+        <fieldset>
+
+            <!-- Survey Metadata -->
+            <div class="survey-metadata border-collect-elements">
+                <div class="common-row">
+                    <label for="survey_title" class="common-text">Survey Title:</label>
+                    <input type="text" id="survey_title" name="survey_title" value="{{ survey.survey_title }}" required class="input-field">
+                </div>
+
+                <div class="common-row">
+                    <label for="survey_description" class="common-text">Survey Description:</label>
+                    <textarea id="survey_description" name="survey_description" required class="input-field">{{ survey.survey_description }}</textarea>
+                </div>
+
+                <div class="common-row">
+                    <label for="welcome_message" class="common-text">Welcome Message:</label>
+                    <input type="text" id="welcome_message" name="welcome_message" value="{{ survey.welcome_message }}" class="input-field">
+                </div>
+
+                <div class="common-row">
+                    <label for="exit_message" class="common-text">Exit Message:</label>
+                    <input type="text" id="exit_message" name="exit_message" value="{{ survey.exit_message }}" class="input-field">
+                </div>
+            </div>
+
+            <!-- Dynamic Question Groups -->
+            {% for group in survey.question_groups %}
+                <div class="question-group border-collect-elements">
+                    <h3 class="section-title-layout">Group {{ loop.index }}</h3>
+                    <input type="hidden" name="group_{{ loop.index }}_id" value="{{ group.id }}">
+                    <div class="common-row">
+                        <label class="common-text">Group Name:</label>
+                        <input type="text" name="group_{{ loop.index }}_name" value="{{ group.group_name }}" required class="input-field">
+                    </div>
+
+                    <div class="common-row">
+                        <label class="common-text">Group Description:</label>
+                        <textarea name="group_{{ loop.index }}_description" required class="input-field">{{ group.group_description }}</textarea>
+                    </div>
+
+                    <!-- Delete Question Group Button -->
+                    <button type="button" class="button-delete" onclick="deleteQuestionGroup(this)">Delete Group</button>
+
+                    <!-- Dynamic Questions -->
+                    {% for question in group.questions %}
+                        <div class="individual-question">
+                        <h5><strong>Question {{ loop.index }}</strong></h5>
+                            <!-- Question Text and Type -->
+                            <input type="hidden" name="group_{{ loop.index }}_question_{{ loop.index }}_id" value="{{ question.id }}">
+                            <div class="common-row">
+                                <label class="common-text">Question Text:</label>
+                                <input type="text" name="group_{{ loop.index }}_question_{{ loop.index }}_text" value="{{ question.question_text }}" required class="input-field">
+                            </div>
+
+                            <div class="common-row">
+                                <label class="common-text">Question Type:</label>
+                                <select name="group_{{ loop.index }}_question_{{ loop.index }}_type" required class="input-field">
+                                    <option value="open-ended" {% if question.question_type_id == 1 %} selected {% endif %}>Open-ended</option>
+                                    <option value="multiple-choice" {% if question.question_type_id == 2 %} selected {% endif %}>Multiple Choice</option>
+                                    <option value="rating-scale" {% if question.question_type_id == 3 %} selected {% endif %}>Rating Scale</option>
+                                </select>
+                            </div>
+
+                            <!-- Delete Question Button -->
+                            <button type="button" class="button-delete" onclick="deleteQuestion(this)">Delete Question</button>
+
+                            <!-- Options for Multiple-Choice Questions -->
+                            {% if question.question_type_id == 2 %}
+                                <div class="options-container">
+                                    {% for option in question.question_options %}
+                                        <div class="option">
+                                            <label>Option {{ loop.index }}</label>
+                                            <!-- Main Option Input -->
+                                            <input type="text" id="option_{{ loop.index }}" name="group_{{ group_index }}_question_{{ question_index }}_option_{{ loop.index }}" value="{{ option.option_text }}" required class="input-field">
+
+                                            <!-- Delete Option Button -->
+                                            <button type="button" class="button-delete" onclick="deleteOption(this)">Delete Option</button>
+
+                                            <!-- Conditional Question Section -->
+                                            {% if option.conditional_link and option.conditional_link.child_question %}
+                                                <div class="conditional-question-container">
+                                                    <strong>Conditional Question for Option {{ loop.index }}:</strong>
+                                                    {% set cond_question = option.conditional_link.child_question %}
+                                                    <div class="conditional-question">
+                                                        <input type="text" name="group_{{ group_index }}_question_{{ question_index }}_option_{{ loop.index }}_conditional_question" value="{{ cond_question.question_text }}" required class="input-field">
+
+                                                            <!-- Conditional Question Type Selector -->
+                                                            <select name="group_{{ group_index }}_question_{{ question_index }}_option_{{ loop.index }}_conditional_type" required class="input-field">
+                                                                <option value="open-ended" {% if cond_question.question_type_id == 1 %} selected {% endif %}>Open-ended</option>
+                                                                <option value="multiple-choice" {% if cond_question.question_type_id == 2 %} selected {% endif %}>Multiple Choice</option>
+                                                                <option value="rating-scale" {% if cond_question.question_type_id == 3 %} selected {% endif %}>Rating Scale</option>
+                                                            </select>
+
+                                                            <!-- Conditional Options for Multiple-Choice Conditional Questions -->
+                                                            {% if cond_question.question_type_id == 2 %}
+                                                                <div class="conditional-options">
+                                                                    {% for cond_option in cond_question.question_options %}
+                                                                    <input type="text" name="group_{{ group_index }}_question_{{ question_index }}_option_{{ loop.index }}_conditional_option_{{ loop.index }}" value="{{ cond_option.option_text }}" required>
+                                                                    {% endfor %}
+                                                                </div>
+                                                            {% endif %}
+
+                                                            <!-- Conditional Rating Scale for Rating-Scale Conditional Questions -->
+                                                            {% if cond_question.question_type_id == 3 %}
+                                                                <div class="conditional-rating-scale">
+                                                                    <input type="number" name="group_{{ group_index }}_question_{{ question_index }}_option_{{ loop.index }}_conditional_min_value" value="{{ cond_question.rating_scale.min_value }}" required>
+                                                                    <input type="number" name="group_{{ group_index }}_question_{{ question_index }}_option_{{ loop.index }}_conditional_max_value" value="{{ cond_question.rating_scale.max_value }}" required>
+                                                                    <input type="number" name="group_{{ group_index }}_question_{{ question_index }}_option_{{ loop.index }}_conditional_step" value="{{ cond_question.rating_scale.step }}" required>
+                                                                </div>
+                                                            {% endif %}
+                                                    </div>
+
+                                                    <!-- Delete Conditional Question Button -->
+                                                    <button type="button" class="button-delete" onclick="deleteConditionalQuestion(this)">Delete Conditional Question</button>
+
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    {% endfor %}
+
+                                    <!-- Add Option Button -->
+                                    <button type="button" class="button-primary" onclick="addOption(this)">Add Option</button>
+
+                                </div>
+                            {% endif %}
+
+                            <!-- Rating Scale for Rating-Scale Questions -->
+                            {% if question.question_type_id == 3 %}
+                                <div class="rating-scale">
+                                    <label>Min Value:</label>
+                                    <input type="number" name="group_{{ loop.index }}_question_{{ loop.index }}_min_value" value="{{ question.rating_scale.min_value }}" required>
+                                    <label>Max Value:</label>
+                                    <input type="number" name="group_{{ loop.index }}_question_{{ loop.index }}_max_value" value="{{ question.rating_scale.max_value }}" required>
+                                    <label>Step:</label>
+                                    <input type="number" name="group_{{ loop.index }}_question_{{ loop.index }}_step" value="{{ question.rating_scale.step }}" required>
+                                </div>
+                            {% endif %}
+                        </div>
+                    {% endfor %}
+                    <div class="button-row">
+                        <!-- Add Question Button -->
+                        <button type="button" class="button-primary" onclick="addQuestion(this)">Add New Question</button>
+                    </div>
+                </div>
+            {% endfor %}
+            <div class="button-container">
+                <!-- Add Question Group Button -->
+                <button type="button" class="button-primary" onclick="addQuestionGroup()">Add New Group</button>
+            </div>
+        </fieldset>
+
+        <!-- Submit Button -->
+        <div class="submit-section">
+            <button type="submit" class="button-primary">Update Survey</button>
+        </div>
+    </form>
+
+
+    <script>
+        // Function to add a new question group
+        function addQuestionGroup() {
+            const questionGroupsContainer = document.querySelector('.form-layout fieldset');
+            const groupIndex = document.querySelectorAll('.question-group').length + 1;
+            const newGroup = document.createElement('div');
+            newGroup.classList.add('question-group', 'border-collect-elements');
+
+            // Group title and fields
+            newGroup.innerHTML = `
+                <h3 class="section-title-layout">Group ${groupIndex}</h3>
+                <input type="hidden" name="group_${groupIndex}_id" value="new">
+                <div class="common-row">
+                    <label class="common-text">Group Name:</label>
+                    <input type="text" name="group_${groupIndex}_name" value="" required class="input-field">
+                </div>
+                <div class="common-row">
+                    <label class="common-text">Group Description:</label>
+                    <textarea name="group_${groupIndex}_description" required class="input-field"></textarea>
+                </div>
+            `;
+
+            // Add New Question Button
+            const addButtonRow = document.createElement('div');
+            addButtonRow.className = 'button-row';
+            addButtonRow.innerHTML = '<button type="button" class="button-primary" onclick="addQuestion(this)">Add New Question</button>';
+            newGroup.appendChild(addButtonRow);
+
+            // Delete Group Button
+            const deleteButton = document.createElement('button');
+            deleteButton.type = 'button';
+            deleteButton.className = 'button-delete';
+            deleteButton.textContent = 'Delete Group';
+            deleteButton.setAttribute('onclick', 'deleteQuestionGroup(this)');
+
+            // Append the Delete Button after the Add New Question button
+            newGroup.appendChild(deleteButton);
+
+            // Insert the new group before the last element (typically, the "Add New Group" button)
+            questionGroupsContainer.insertBefore(newGroup, questionGroupsContainer.lastElementChild);
+        }
+
+
+        document.addEventListener('DOMContentLoaded', function() {
+            // Listen for changes on question type selectors in each question
+            document.querySelectorAll('.form-layout').forEach(form => {
+                form.addEventListener('change', function(e) {
+                    if (e.target.matches('[name$="_type"]')) { // Matches elements where the name ends with "_type"
+                        handleQuestionTypeChange(e.target);
+                    }
+                });
+            });
+        });
+
+
+        // Function to delete a question group
+        function deleteQuestionGroup(element) {
+            if (confirm('Are you sure you want to delete this group?')) {
+                element.parentElement.remove();
+                renumberQuestionGroups();
+            }
+        }
+
+        // Function to renumber question groups after deletion
+        function renumberQuestionGroups() {
+            const questionGroups = document.querySelectorAll('.question-group');
+            questionGroups.forEach((group, index) => {
+                group.querySelector('.section-title-layout').innerText = `Group ${index + 1}`;
+                group.querySelectorAll('input, textarea, select').forEach(input => {
+                    const name = input.name.replace(/group_\d+/, `group_${index + 1}`);
+                    input.name = name;
+                });
+            });
+        }
+
+        // Function to add a new question to a specific group
+        function addQuestion(button) {
+            // Assuming each group has a data attribute `data-group-index` that correctly reflects its current index
+            const groupContainer = button.closest('.question-group');
+            const groupIndex = groupContainer.getAttribute('data-group-index');
+            const questionsContainer = groupContainer.querySelector('.questions-container'); // Ensure there's a container for questions
+            const questionIndex = questionsContainer.querySelectorAll('.individual-question').length + 1;
+
+            const newQuestionHTML = `
+                <div class="individual-question" data-question-index="${questionIndex}">
+                    <h5><strong>Question ${questionIndex}</strong></h5>
+                    <input type="hidden" name="group_${groupIndex}_question_${questionIndex}_id" value="new">
+                    <div class="common-row">
+                        <label class="common-text">Question Text:</label>
+                        <input type="text" name="group_${groupIndex}_question_${questionIndex}_text" required class="input-field">
+                    </div>
+                    <div class="common-row">
+                        <label class="common-text">Question Type:</label>
+                        <select name="group_${groupIndex}_question_${questionIndex}_type" required class="input-field">
+                            <option value="open-ended">Open-ended</option>
+                            <option value="multiple-choice">Multiple Choice</option>
+                            <option value="rating-scale">Rating Scale</option>
+                        </select>
+                    </div>
+                    <button type="button" class="button-delete" onclick="deleteQuestion(this)">Delete Question</button>
+                </div>`;
+
+            questionsContainer.insertAdjacentHTML('beforeend', newQuestionHTML);
+        }
+
+        function handleQuestionTypeChange(selector) {
+            const questionContainer = selector.closest('.individual-question');
+            const questionType = selector.value;
+            const groupIndex = questionContainer.closest('.question-group').dataset.groupIndex; // Using data attributes
+            const questionIndex = questionContainer.dataset.questionIndex; // Using data attributes
+
+            // Remove existing options or rating scale inputs
+            const existingOptionsContainer = questionContainer.querySelector('.options-container');
+            const existingRatingScaleContainer = questionContainer.querySelector('.rating-scale');
+            if (existingOptionsContainer) existingOptionsContainer.remove();
+            if (existingRatingScaleContainer) existingRatingScaleContainer.remove();
+
+            if (questionType === 'multiple-choice') {
+                // Add only one option container for multiple choice questions
+                const optionsContainer = document.createElement('div');
+                optionsContainer.classList.add('options-container');
+                optionsContainer.innerHTML = `
+                    <div class="option">
+                        <label>Option 1</label>
+                        <input type="text" name="group_${groupIndex}_question_${questionIndex}_option_1" required class="input-field">
+                        <button type="button" class="button-delete" onclick="deleteOption(this)">Delete Option</button>
+                    </div>
+                `;
+                questionContainer.appendChild(optionsContainer);
+
+                // Append "Add Option" button directly within the options container
+                const addOptionButton = document.createElement('button');
+                addOptionButton.type = 'button';
+                addOptionButton.classList.add('button-primary');
+                addOptionButton.textContent = 'Add Option';
+                addOptionButton.addEventListener('click', function() { addOption(this); });
+                optionsContainer.appendChild(addOptionButton);
+
+            } else if (questionType === 'rating-scale') {
+                // Add rating scale inputs for rating scale questions with placeholders
+                const ratingScaleContainer = document.createElement('div');
+                ratingScaleContainer.classList.add('rating-scale');
+                ratingScaleContainer.innerHTML = `
+                    <label>Min Value:</label>
+                    <input type="number" placeholder="e.g., 1" name="group_${groupIndex}_question_${questionIndex}_min_value" required>
+                    <label>Max Value:</label>
+                    <input type="number" placeholder="e.g., 5" name="group_${groupIndex}_question_${questionIndex}_max_value" required>
+                    <label>Step:</label>
+                    <input type="number" placeholder="e.g., 1" name="group_${groupIndex}_question_${questionIndex}_step" required>
+                `;
+                questionContainer.appendChild(ratingScaleContainer);
+            }
+            // No additional fields needed for 'open-ended', so do nothing else
+        }
+
+        function deleteQuestion(deleteButton) {
+            const questionContainer = deleteButton.closest('.individual-question');
+            const groupContainer = questionContainer.closest('.question-group');
+            questionContainer.remove();
+            renumberQuestions(groupContainer);
+        }
+
+        function renumberQuestions(groupContainer) {
+            const questions = groupContainer.querySelectorAll('.individual-question');
+            questions.forEach((question, index) => {
+                question.querySelector('strong').innerText = `Question ${index + 1}`;
+                // Update names and IDs based on new question index for proper backend mapping
+                question.querySelectorAll('input, select').forEach(input => {
+                    input.name = input.name.replace(/question_\d+/, `question_${index + 1}`);
+                });
+            });
+        }
+
+        // Function to add an option to a specific question
+        function addOption(addButton) {
+            const questionContainer = addButton.closest('.individual-question');
+            let optionsContainer = questionContainer.querySelector('.options-container');
+
+            // Check if options container exists, create if not
+            if (!optionsContainer) {
+                optionsContainer = document.createElement('div');
+                optionsContainer.classList.add('options-container');
+                questionContainer.insertBefore(optionsContainer, addButton);
+            }
+
+            const optionIndex = optionsContainer.querySelectorAll('.option').length + 1;
+            const groupIndex = questionContainer.closest('.question-group').dataset.groupIndex; // Assuming you're using data attributes
+            const questionIndex = questionContainer.dataset.questionIndex; // Assuming you're using data attributes
+
+            // Create a new option element
+            const newOption = document.createElement('div');
+            newOption.classList.add('option');
+            newOption.innerHTML = `
+                <label>Option ${optionIndex}</label>
+                <input type="text" name="group_${groupIndex}_question_${questionIndex}_option_${optionIndex}" value="" required class="input-field">
+                <button type="button" class="button-delete" onclick="deleteOption(this)">Delete Option</button>
+            `;
+
+            optionsContainer.appendChild(newOption); // Add new option into the options container
+
+            // Ensure "Add Option" button is at the end
+            optionsContainer.appendChild(addButton);
+
+            renumberOptions(questionContainer);
+        }
+
+
+        // Function to delete an option from a question
+        function deleteOption(deleteButton) {
+            const optionContainer = deleteButton.closest('.option');
+            const questionContainer = optionContainer.closest('.individual-question');
+            optionContainer.remove();
+            renumberOptions(questionContainer);
+        }
+
+        // Function to renumber options after adding or deleting
+        function renumberOptions(questionContainer) {
+            const options = questionContainer.querySelectorAll('.option');
+            options.forEach((option, index) => {
+                option.querySelector('label').innerText = `Option ${index + 1}`;
+                option.querySelectorAll('input').forEach(input => {
+                    const newName = input.name.replace(/option_\d+/, `option_${index + 1}`);
+                    input.name = newName;
+                });
+            });
+        }
+
+        // Updated dynamic binding to handle "Add Option" button clicks
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.form-layout').forEach(form => {
+                form.addEventListener('click', function(e) {
+                    if (e.target.classList.contains('add-option-button')) {
+                        addOption(e.target);
+                    }
+                });
+            });
+        });
+    </script>
+
+
+
+
+<style>
+
+
+</style>
+
+{% endblock %}

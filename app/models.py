@@ -51,6 +51,7 @@ class QuestionType(db.Model):
     __tablename__ = 'question_type'
     id = db.Column(db.Integer, primary_key=True)
     type_name = db.Column(db.String(255), unique=True, nullable=False)
+    is_locked = db.Column(db.Boolean, default=False, nullable=False)
 
 
 # QuestionGroup model
@@ -74,22 +75,9 @@ class Question(db.Model):
     group_id = db.Column(db.Integer, db.ForeignKey('question_group.id'))
 
     # Relationships
-    parent_conditions = db.relationship('QuestionCondition', foreign_keys='QuestionCondition.parent_question_id',
-                                        backref='parent_question', lazy='dynamic')
-    dependent_conditions = db.relationship('QuestionCondition', foreign_keys='QuestionCondition.dependent_question_id',
-                                           backref='dependent_question', lazy='dynamic')
     question_options = db.relationship('QuestionOption', backref='question', lazy='dynamic')
     rating_scale = db.relationship('RatingScale', uselist=False, backref='question')
-
-
-# ConditionalQuestion Model (QuestionCondition)
-class QuestionCondition(db.Model):
-    __tablename__ = 'question_conditions'
-    id = db.Column(db.Integer, primary_key=True)
-    parent_question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=False)
-    dependent_question_id = db.Column(db.Integer, db.ForeignKey('question.id'), nullable=False)
-    condition = db.Column(db.String(255), nullable=False)
-    condition_value = db.Column(db.String(255), nullable=False)
+    conditional_links = db.relationship('ConditionalLink', backref='parent_question', lazy='dynamic')
 
 
 # QuestionOption model
@@ -98,6 +86,17 @@ class QuestionOption(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     option_text = db.Column(db.String(500))
     question_id = db.Column(db.Integer, db.ForeignKey('question.id'))
+
+    # Relationship
+    conditional_link = db.relationship('ConditionalLink', uselist=False, backref='parent_option')
+
+
+# Conditional Question
+class ConditionalLink(db.Model):
+    __tablename__ = 'conditional_link'
+    id = db.Column(db.Integer, primary_key=True)
+    parent_option_id = db.Column(db.Integer, db.ForeignKey('question_option.id'))
+    child_question_id = db.Column(db.Integer, db.ForeignKey('question.id'))
 
 
 # RatingScale model

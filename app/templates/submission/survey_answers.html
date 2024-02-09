@@ -1,0 +1,44 @@
+{% extends "layout.html" %}
+
+{% block content %}
+<div class="container">
+    <h1 class="large-title-layout">Answers for Survey: {{ survey.survey_title }}</h1>
+    <div class="button-container">
+            <a href="{{ url_for('generate_pdf', survey_id=survey.id, participant_id=participant.id) }}" class="button-primary">Download PDF</a>
+    </div>
+    <h2 class="section-title-layout">Participant ID: {{ participant.id }}</h2>
+
+    {% for group in survey.question_groups %}
+        <h3 class="section-layout">Group {{ loop.index }}: {{ group.group_name }}</h3>
+        <table class="table-layout">
+            <thead>
+                <tr>
+                    <th>Question</th>
+                    <th>Answer</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for question in group.questions %}
+                    {% set found_answer = answers|selectattr('1.id', 'equalto', question.id)|map('first')|first %}
+                    <tr>
+                        <td>{{ loop.index }}. {{ question.question_text }}</td>
+                        <td>
+                            {% if found_answer %}
+                                {% if question.question_type_id == 1 %}
+                                    {{ found_answer.answer_text }}
+                                {% elif question.question_type_id == 2 %}
+                                    {{ selected_options.get(found_answer.id, 'No answer selected') }}
+                                {% elif question.question_type_id == 3 %}
+                                    {{ found_answer.answer_rating }}
+                                {% endif %}
+                            {% else %}
+                                No answer provided
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% endfor %}
+</div>
+{% endblock %}

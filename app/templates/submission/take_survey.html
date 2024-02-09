@@ -1,0 +1,221 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Take Survey - {{ survey.survey_title }}
+{% endblock %}
+
+{% block content %}
+    <!-- Breadcrumbs -->
+    <nav class="breadcrumbs">
+        <a href="/">Home</a> <span>&gt;</span>
+        <a href="/survey_list">Surveys</a> <span>&gt;</span>
+        <span>{{ survey.survey_title }}</span>
+    </nav>
+
+    <div class="section-title-layout">
+        {{ survey.survey_title }}
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-body">
+            <p>{{ survey.welcome_message }}</p>
+        </div>
+    </div>
+    <div class="card mb-4">
+    </div>
+
+
+
+<!-- Survey Form -->
+<form action="{{ url_for('take_survey', survey_id=survey.id) }}" method="POST" class="survey-form">
+    <div class="card mb-4, card-body">
+        <strong class="section-title-layout">Description</strong>
+        <p>{{ survey.survey_description }}</p>
+    </div>
+
+    <div>
+        {% for group_data in question_groups %}
+            <div class="card mb-4, card-body">
+                <h3 class="section-title-layout">Group {{ loop.index }}: {{ group_data.group.group_name }}</h3>
+                <p class="section-layout">{{ group_data.group.group_description }}</p>
+                {% for question in group_data.questions %}
+                    <div class="light-border-collect-elements">
+                        <h6 class="section-layout">{{ loop.index }}. {{ question.question_text }}</h6>
+                        {% if question.question_type_id == question_type_mapping['open-ended'] %}
+                            <textarea name="question_{{ question.id }}" class="input-field question-input" placeholder="Your answer..."></textarea>
+                        {% elif question.question_type_id == question_type_mapping['multiple-choice'] %}
+                            <div class="options-container">
+                                {% for option in question.question_options %}
+                                    <label class="option-label">
+                                        <input type="radio" name="question_{{ question.id }}" value="{{ option.option_text }}" class="question-input" data-option-id="{{ option.id }}">
+                                        {{ option.option_text }}
+                                    </label>
+                                    {% if option.id in conditional_questions_mapping %}
+                                        <div id="conditional_question_{{ conditional_questions_mapping[option.id] }}" class="conditional-question" style="display: none;">
+                                            {% set cond_question_id = conditional_questions_mapping[option.id] %}
+                                            {% set cond_question = conditional_questions_details[cond_question_id] %}
+                                            <h6 class="section-layout">Conditional: {{ cond_question.question_text }}</h6>
+
+                                            {% if cond_question.question_type_id == 2 %}
+                                                <div class="options-container">
+                                                    {% for cond_option in cond_question.options %}
+                                                        <label class="option-label">
+                                                            <input type="radio" name="cond_question_{{ cond_question_id }}" value="{{ cond_option.option_text }}" class="question-input">
+                                                            {{ cond_option.option_text }}
+                                                        </label>
+                                                    {% endfor %}
+                                                </div>
+                                            {% elif cond_question.question_type_id == 3 %}
+                                                <div class="rating-scale">
+                                                    <label>Rating ({{ cond_question.rating_scale.min_value }} to {{ cond_question.rating_scale.max_value }}):</label>
+                                                    <input type="range" name="cond_question_{{ cond_question_id }}" min="{{ cond_question.rating_scale.min_value }}" max="{{ cond_question.rating_scale.max_value }}" step="{{ cond_question.rating_scale.step }}" value="{{ cond_question.rating_scale.min_value }}">
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                    {% endif %}
+                                {% endfor %}
+                            </div>
+                        {% elif question.question_type_id == question_type_mapping['rating-scale'] %}
+                            <div class="rating-scale">
+                                <label for="range_{{ question.id }}">Rating ({{ question.rating_scale.min_value }} to {{ question.rating_scale.max_value }}):</label>
+                                <input type="range" id="range_{{ question.id }}" name="question_{{ question.id }}" min="{{ question.rating_scale.min_value }}" max="{{ question.rating_scale.max_value }}" step="{{ question.rating_scale.step }}" value="{{ question.rating_scale.min_value }}" oninput="updateOutput(this)">
+                                <div class="scale-labels" id="labels_{{ question.id }}"></div>
+                                <div class="scale-steps" id="steps_{{ question.id }}"></div>
+                            </div>
+                        {% endif %}
+                    </div>
+                {% endfor %}
+            </div>
+        {% endfor %}
+
+        <!-- Submit Button -->
+        <div class="button-row">
+            <button type="submit" class="button-secondary">Submit Survey</button>
+        </div>
+    </div>
+</form>
+
+
+
+    <script>
+        // Function to initially hide all conditional questions
+        function hideAllConditionalQuestions() {
+            document.querySelectorAll('.conditional-question').forEach(function(el) {
+                el.style.display = 'none';
+            });
+        }
+
+        // Function to show conditional question based on selected option
+        function setupConditionalQuestions() {
+            document.querySelectorAll('.options-container input[type=radio]').forEach(function(radioInput) {
+                radioInput.addEventListener('change', function() {
+                    hideAllConditionalQuestions();
+
+                    // Retrieve the conditional question ID from the data attribute
+                    const selectedOptionId = this.getAttribute('data-option-id');
+                    const conditionalQuestionId = 'conditional_question_' + selectedOptionId;
+
+                    const conditionalQuestionDiv = document.getElementById(conditionalQuestionId);
+                    if (conditionalQuestionDiv) {
+                        conditionalQuestionDiv.style.display = 'block';
+                    }
+                });
+            });
+        }
+
+        // Function to load content for a conditional question dynamically
+        function loadConditionalQuestionContent(conditionalQuestionId, optionId) {
+            console.log('Attempting to load content for conditional question:', conditionalQuestionId, 'Option ID:', optionId);
+            // Implement AJAX request or other method to dynamically load content for the conditional question
+            fetch('/path_to_get_conditional_question_content?optionId=' + optionId)
+                .then(response => response.text())
+                .then(data => {
+                    const conditionalQuestionDiv = document.getElementById(conditionalQuestionId);
+                    if (conditionalQuestionDiv) {
+                        console.log('Updating content for conditional question:', conditionalQuestionId);
+                        conditionalQuestionDiv.innerHTML = data;
+                    } else {
+                        console.error('Conditional question div not found:', conditionalQuestionId);
+                    }
+                })
+                .catch(error => console.error('Error loading conditional question:', error));
+        }
+
+        // Function to create scale labels for rating questions
+        function createScaleLabels(rangeInput) {
+            const min = parseInt(rangeInput.min);
+            const max = parseInt(rangeInput.max);
+            const step = parseInt(rangeInput.step);
+            const labelsContainer = document.getElementById('labels_' + rangeInput.id.split('_')[1]);
+
+            if (labelsContainer) {
+                labelsContainer.innerHTML = ''; // Clear any existing labels
+
+                for (let i = min; i <= max; i += step) {
+                    const labelDiv = document.createElement('div');
+                    labelDiv.className = 'label';
+                    labelDiv.innerText = i;
+                    const pos = ((i - min) / (max - min)) * 100;
+                    labelDiv.style.left = pos + '%';
+                    labelsContainer.appendChild(labelDiv);
+                }
+            }
+        }
+
+        // Initialize all components on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            hideAllConditionalQuestions();
+            setupConditionalQuestions();
+
+            // Initialize rating scales
+            document.querySelectorAll('.rating-scale input[type=range]').forEach(function(rangeInput) {
+                rangeInput.addEventListener('input', function() {
+                    const value = (this.value - this.min) / (this.max - this.min) * 100;
+                    this.style.background = 'linear-gradient(to right, var(--primary-red) ' + value + '%, var(--light-gray) ' + value + '%)';
+                });
+
+                // Initialize the correct background for each slider on page load
+                const value = (rangeInput.value - rangeInput.min) / (rangeInput.max - rangeInput.min) * 100;
+                rangeInput.style.background = 'linear-gradient(to right, var(--primary-red) ' + value + '%, var(--light-gray) ' + value + '%)';
+                createScaleLabels(rangeInput);
+            });
+        });
+
+
+        // Add an event listener to the form submission
+        document.querySelector('.survey-form').addEventListener('submit', function(event) {
+            const questions = document.querySelectorAll('.question-input');
+            let allAnswered = true;
+
+            questions.forEach(question => {
+                // For multiple-choice, check if any option is checked
+                if (question.type === 'radio' && !document.querySelector('input[name="' + question.name + '"]:checked')) {
+                    allAnswered = false;
+                }
+                // For open-ended, check if it's not empty
+                else if (question.type === 'textarea' && !question.value.trim()) {
+                    allAnswered = false;
+                }
+            });
+
+            if (allAnswered) {
+                // Display the exit message as an alert
+                alert("{{ survey.exit_message }}");
+            }
+            else {
+                alert('Please answer all required questions before submitting.');
+                event.preventDefault(); // Prevent the form from being submitted
+                // Optionally, scroll to the first unanswered question
+                // Find the first unanswered question and focus on it
+                const firstUnanswered = Array.from(questions).find(question => {
+                    return question.type === 'radio' ? !document.querySelector('input[name="' + question.name + '"]:checked') : !question.value.trim();
+                });
+                firstUnanswered.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                firstUnanswered.focus();
+            }
+
+        });
+
+    </script>
+
+{% endblock %}

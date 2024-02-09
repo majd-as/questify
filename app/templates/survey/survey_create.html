@@ -1,0 +1,424 @@
+{% extends "layout.html" %}
+
+{% block title %}
+    Questify - Create Survey
+{% endblock %}
+
+{% block content %}
+    <!-- Breadcrumbs -->
+    <nav class="breadcrumbs">
+        <a href="/">Home</a> <span>&gt;</span>
+        <a href="/survey_list">Surveys</a> <span>&gt;</span>
+        <span>Create</span>
+    </nav>
+
+    <div class="section-title-layout">
+        Create a New Survey
+    </div>
+
+    <!-- Display Flash Messages -->
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            <ul class="flash-messages">
+                {% for message in messages %}
+                    <li>{{ message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    {% endwith %}
+
+    <form action="/create_survey" method="POST" id="survey-form">
+
+        <!-- Survey Metadata -->
+        <div class="survey-metadata border-collect-elements">
+            <div class="input-field">
+                <label for="survey_title" class="common-text">Survey Title:</label>
+                <input type="text" id="survey_title" name="survey_title" class="input-field" required>
+            </div>
+            <div class="input-field">
+                <label for="survey_description" class="common-text">Survey Description:</label>
+                <textarea id="survey_description" name="survey_description" class="input-field" required></textarea>
+            </div>
+            <div class="input-field">
+                <label for="welcome_message" class="common-text">Welcome Message:</label>
+                <input type="text" id="welcome_message" name="welcome_message" class="input-field">
+            </div>
+            <div class="input-field">
+                <label for="exit_message" class="common-text">Exit Message:</label>
+                <input type="text" id="exit_message" name="exit_message" class="input-field">
+            </div>
+        </div>
+
+        <!-- Question Groups -->
+        <div id="question-groups" class="question-groups">
+            <!-- Question groups will be dynamically generated here -->
+        </div>
+
+        <!-- Add Group Button -->
+        <div class="button-group">
+            <button type="button" id="add-group" class="button-primary">Add Question Group</button>
+        </div>
+
+        <!-- Submit Button -->
+        <div class="button-group">
+            <button type="submit" class="button-primary">Save Survey</button>
+        </div>
+
+    </form>
+
+<script>
+    document.addEventListener("DOMContentLoaded", function() {
+        const addGroupButton = document.getElementById("add-group");
+        const questionGroupsDiv = document.getElementById("question-groups");
+        let groupCount = 0;
+
+        function addGroup() {
+            groupCount++;
+            const groupDiv = document.createElement("div");
+            groupDiv.className = "question-group border-collect-elements"; // Adjusted class name
+            groupDiv.dataset.groupId = groupCount;
+            groupDiv.innerHTML = `
+                <h3 class="section-title-layout">Question Group ${groupCount}</h3>
+                <div class="common-row">
+                    <label class="common-text">Group Name:</label>
+                    <input type="text" name="group_${groupCount}_title" placeholder="Group Title" required class="input-field">
+                </div>
+                <div class="common-row">
+                    <label class="common-text">Group Description:</label>
+                    <textarea name="group_${groupCount}_description" placeholder="Group Description" required class="input-field"></textarea>
+                </div>
+                <div class="questions-container"></div>
+                <div class="button-row">
+                    <button type="button" class="button-primary add-question">Add Question</button>
+                    <button type="button" class="button-delete delete-group">Delete Group</button>
+                </div>
+            `;
+
+            questionGroupsDiv.appendChild(groupDiv);
+            setupDeleteGroupButton(groupDiv);
+            setupAddQuestionButton(groupDiv);
+        }
+
+        function setupDeleteGroupButton(groupDiv) {
+            const deleteButton = groupDiv.querySelector('.delete-group');
+            deleteButton.addEventListener('click', () => {
+                groupDiv.remove();
+                renumberGroups();
+            });
+        }
+
+        function setupAddQuestionButton(groupDiv) {
+            const addQuestionButton = groupDiv.querySelector('.add-question');
+            addQuestionButton.addEventListener('click', () => {
+                const groupId = groupDiv.dataset.groupId;
+                addQuestion(groupDiv, groupId);
+            });
+        }
+
+        function addQuestion(groupDiv, groupId) {
+            const questionContainer = groupDiv.querySelector('.questions-container');
+            const questionCount = questionContainer.children.length + 1;
+            const questionDiv = document.createElement("div");
+            questionDiv.className = "individual-question";
+            questionDiv.dataset.questionId = questionCount;
+            questionDiv.innerHTML = `
+                <h5>Question ${questionCount}</h5>
+                <input type="text" name="group_${groupId}_question_${questionCount}_text" placeholder="Question Text" required class="input-field">
+                <select name="group_${groupId}_question_${questionCount}_type" required class="input-field">
+                    <option value="" disabled selected>Select Question Type</option>
+                    <option value="open-ended">Open-ended</option>
+                    <option value="multiple-choice">Multiple Choice</option>
+                    <option value="rating-scale">Rating Scale</option>
+                </select>
+                <div class="specific-fields"></div>
+                <button type="button" class="button-delete delete-question">Delete Question</button>
+            `;
+            questionContainer.appendChild(questionDiv);
+
+            setupDeleteQuestionButton(questionDiv, groupDiv, groupId);
+            setupQuestionTypeChangeHandler(questionDiv, groupId, questionCount);
+        }
+
+        function setupDeleteQuestionButton(questionDiv, groupDiv, groupId) {
+            const deleteButton = questionDiv.querySelector('.delete-question');
+            deleteButton.addEventListener('click', () => {
+                questionDiv.remove();
+                renumberQuestions(groupDiv, groupId);
+            });
+        }
+
+        function setupQuestionTypeChangeHandler(questionDiv, groupId, questionCount) {
+            const select = questionDiv.querySelector('select');
+            select.addEventListener('change', function() {
+                handleQuestionTypeChange(questionDiv, select.value, groupId, questionCount);
+            });
+        }
+
+        function handleQuestionTypeChange(questionDiv, questionType, groupId, questionCount) {
+            const specificFieldsDiv = questionDiv.querySelector('.specific-fields');
+            specificFieldsDiv.innerHTML = '';
+            if (questionType === 'multiple-choice') {
+                const optionsContainer = document.createElement("div");
+                optionsContainer.className = "options-container";
+                specificFieldsDiv.appendChild(optionsContainer);
+
+                addOption(optionsContainer, groupId, questionCount, 1); // Add the first option by default
+
+                const addOptionButton = document.createElement("button");
+                addOptionButton.innerText = "Add Option";
+                addOptionButton.className = "button-primary";
+                addOptionButton.type = "button";
+                addOptionButton.addEventListener("click", () => {
+                    const optionCount = optionsContainer.children.length + 1;
+                    addOption(optionsContainer, groupId, questionCount, optionCount);
+                });
+                specificFieldsDiv.appendChild(addOptionButton);
+
+            } else if (questionType === 'rating-scale') {
+                specificFieldsDiv.innerHTML = `
+                    <input type="number" name="group_${groupId}_question_${questionCount}_min_value" placeholder="Min Value" required>
+                    <input type="number" name="group_${groupId}_question_${questionCount}_max_value" placeholder="Max Value" required>
+                    <input type="number" name="group_${groupId}_question_${questionCount}_step" placeholder="Step" required>
+                `;
+
+                // Immediately invoke validation setup for the newly created inputs
+                ['min_value', 'max_value', 'step'].forEach(field => {
+                    const input = specificFieldsDiv.querySelector(`[name="group_${groupId}_question_${questionCount}_${field}"]`);
+                    input.addEventListener('input', validateRatingScaleInput.bind(null, input, groupId, questionCount));
+                });
+            }
+            // Other question types can be handled here
+        }
+
+
+        function validateRatingScaleInput(inputElement) {
+            // No need to extract groupId and questionId for immediate validation
+            const value = inputElement.value;
+
+            // Immediate check for whole numbers
+            if (value.includes('.') || !/^\d+$/.test(value)) {
+                alert('Only whole numbers are allowed.');
+                inputElement.value = ''; // Clear the current input if it's not a whole number
+                return;
+            }
+
+            // Proceed to validate the relation between min, max, and step values
+            // This part of the code needs to be executed after all values are entered and valid
+            // Delay the validation to ensure all inputs are filled
+            setTimeout(() => {
+                const groupId = inputElement.name.match(/group_(\d+)_question/)[1];
+                const questionId = inputElement.name.match(/question_(\d+)_/)[1];
+
+                const minInput = document.querySelector(`[name="group_${groupId}_question_${questionId}_min_value"]`);
+                const maxInput = document.querySelector(`[name="group_${groupId}_question_${questionId}_max_value"]`);
+                const stepInput = document.querySelector(`[name="group_${groupId}_question_${questionId}_step"]`);
+
+                const minValue = parseFloat(minInput.value, 10);
+                const maxValue = parseFloat(maxInput.value, 10);
+                const stepValue = parseFloat(stepInput.value, 10);
+
+                // Ensure max value is greater than min value
+                if (maxValue <= minValue) {
+                    alert('Maximum value must be greater than minimum value.');
+                    maxInput.value = ''; // Optionally, clear the max value input
+                    return;
+                }
+
+                // Validate that the range is divisible by the step
+                if ((maxValue - minValue) % stepValue !== 0) {
+                    alert('The range (max - min) must be divisible by the step.');
+                    stepInput.value = ''; // Optionally, clear the step input
+                    return;
+                }
+            }, 100); // Delay to ensure user has finished input before validating relation between values
+        }
+
+
+
+        function addOption(optionsContainer, groupId, questionCount, optionCount) {
+            const optionDiv = document.createElement("div");
+            optionDiv.className = "option";
+            optionDiv.innerHTML = `
+                <input type="text" name="group_${groupId}_question_${questionCount}_option_${optionCount}" placeholder="Option ${optionCount}" required class="input-field">
+                <div class="conditional-question-container"></div>
+                <button type="button" class="button-delete delete-option">Delete Option</button>
+
+            `;
+            optionsContainer.appendChild(optionDiv);
+
+            setupDeleteOptionButton(optionDiv, optionsContainer, groupId, questionCount);
+            setupAddConditionalQuestionButton(optionDiv, groupId, questionCount, optionCount);
+        }
+
+            function setupDeleteOptionButton(optionDiv, optionsContainer, groupId, questionCount) {
+                const deleteButton = optionDiv.querySelector('.delete-option');
+                deleteButton.addEventListener('click', () => {
+                    optionDiv.remove();
+                    renumberOptions(optionsContainer, groupId, questionCount);
+                });
+            }
+
+            function setupAddConditionalQuestionButton(optionDiv, groupId, questionCount, optionCount) {
+                const addConditionalButton = document.createElement("button");
+                addConditionalButton.innerText = "Add Conditional Question";
+                addConditionalButton.type = "button";
+                addConditionalButton.className = "button-primary";
+                addConditionalButton.addEventListener("click", () => {
+                    const conditionalContainer = optionDiv.querySelector('.conditional-question-container');
+                    // Prevent adding more than one conditional question per option
+                    if (conditionalContainer.childElementCount === 0) {
+                        addConditionalQuestion(conditionalContainer, groupId, questionCount, optionCount);
+                    }
+                });
+                optionDiv.appendChild(addConditionalButton);
+            }
+
+            function addConditionalQuestion(conditionalContainer, groupId, questionCount, optionCount) {
+                const conditionalDiv = document.createElement("div");
+                conditionalDiv.className = "conditional-question";
+                conditionalDiv.innerHTML = `
+                    <input type="text" name="group_${groupId}_question_${questionCount}_option_${optionCount}_conditional_text" placeholder="Conditional Question Text" required class="input-field">
+                    <select name="group_${groupId}_question_${questionCount}_option_${optionCount}_conditional_type" required class="input-field">
+                        <option value="" disabled selected>Select Type</option>
+                        <option value="open-ended">Open-ended</option>
+                        <option value="multiple-choice">Multiple Choice</option>
+                        <option value="rating-scale">Rating Scale</option>
+                    </select>
+                    <div class="conditional-specific-fields"></div>
+                    <button type="button" class="button-delete delete-conditional">Delete Conditional Question</button>
+                `;
+                conditionalContainer.appendChild(conditionalDiv);
+
+                const deleteConditionalButton = conditionalDiv.querySelector('.delete-conditional');
+                deleteConditionalButton.addEventListener('click', () => {
+                    conditionalDiv.remove();
+                });
+
+                const conditionalTypeSelect = conditionalDiv.querySelector('select');
+                conditionalTypeSelect.addEventListener('change', () => {
+                    handleConditionalTypeChange(conditionalDiv, conditionalTypeSelect.value, groupId, questionCount, optionCount);
+                });
+            }
+
+            function handleConditionalTypeChange(conditionalDiv, conditionalType, groupId, questionCount, optionCount) {
+                const specificFieldsDiv = conditionalDiv.querySelector('.conditional-specific-fields');
+                specificFieldsDiv.innerHTML = '';
+
+                if (conditionalType === 'rating-scale') {
+                    specificFieldsDiv.innerHTML = `
+                        <input type="number" name="group_${groupId}_question_${questionCount}_option_${optionCount}_conditional_min_value" placeholder="Min Value" required>
+                        <input type="number" name="group_${groupId}_question_${questionCount}_option_${optionCount}_conditional_max_value" placeholder="Max Value" required>
+                        <input type="number" name="group_${groupId}_question_${questionCount}_option_${optionCount}_conditional_step" placeholder="Step" required>
+                    `;
+                } else if (conditionalType === 'multiple-choice') {
+                    // Create a container for options
+                    const conditionalOptionsContainer = document.createElement("div");
+                    conditionalOptionsContainer.className = "conditional-options-container";
+                    specificFieldsDiv.appendChild(conditionalOptionsContainer);
+
+                    // Add the first option by default
+                    addConditionalOption(conditionalOptionsContainer, groupId, questionCount, optionCount, 1);
+
+                    // Button to add new options
+                    const addOptionButton = document.createElement("button");
+                    addOptionButton.innerText = "Add Option";
+                    addOptionButton.className = "button-primary"
+                    addOptionButton.type = "button";
+                    addOptionButton.addEventListener("click", () => {
+                        const newOptionNumber = conditionalOptionsContainer.children.length + 1;
+                        addConditionalOption(conditionalOptionsContainer, groupId, questionCount, optionCount, newOptionNumber);
+                    });
+                    specificFieldsDiv.appendChild(addOptionButton);
+                }
+                // No specific fields needed for open-ended
+            }
+
+            function addConditionalOption(container, groupId, questionCount, optionCount, conditionalOptionNumber) {
+                const optionDiv = document.createElement("div");
+                optionDiv.className = "conditional-option";
+                optionDiv.innerHTML = `
+                    <input type="text" name="group_${groupId}_question_${questionCount}_option_${optionCount}_conditional_option_${conditionalOptionNumber}" placeholder="Option ${conditionalOptionNumber}" required class="input-field">
+                    <button type="button" class="button-delete delete-conditional-option">Delete Option</button>
+                `;
+                container.appendChild(optionDiv);
+
+                // Delete option button functionality
+                const deleteOptionButton = optionDiv.querySelector('.delete-conditional-option');
+                deleteOptionButton.addEventListener('click', () => {
+                    optionDiv.remove();
+                    renumberConditionalOptions(container, groupId, questionCount, optionCount);
+                });
+            }
+
+
+        function renumberGroups() {
+            let newGroupCount = 1;
+            document.querySelectorAll('.question-group').forEach(group => {
+                group.dataset.groupId = newGroupCount;
+                group.querySelector('h3').innerText = `Question Group ${newGroupCount}`;
+                group.querySelectorAll('[name]').forEach(input => {
+                    const name = input.name;
+                    input.name = name.replace(/group_\d+/, `group_${newGroupCount}`);
+                });
+                renumberQuestions(group, newGroupCount);
+                newGroupCount++;
+            });
+            groupCount = newGroupCount - 1;
+        }
+
+        function renumberQuestions(groupDiv, groupId) {
+            let newQuestionCount = 1;
+            groupDiv.querySelectorAll('.question').forEach(question => {
+                question.dataset.questionId = newQuestionCount;
+                question.querySelector('h5').innerText = `Question ${newQuestionCount}`;
+                question.querySelectorAll('[name]').forEach(input => {
+                    const name = input.name;
+                    input.name = name.replace(/question_\d+/, `question_${newQuestionCount}`);
+                });
+                renumberOptions(question.querySelector('.specific-fields'), groupId, newQuestionCount);
+                newQuestionCount++;
+            });
+        }
+
+        function renumberOptions(optionsContainer, groupId, questionId) {
+            let newOptionCount = 1;
+            optionsContainer.querySelectorAll('.option').forEach(option => {
+                // Renumber the option inputs
+                const optionInputs = option.querySelectorAll('input, select');
+                optionInputs.forEach(input => {
+                    const name = input.name;
+                    if (name.includes('_option_')) {
+                        input.name = `group_${groupId}_question_${questionId}_option_${newOptionCount}`;
+                    } else if (name.includes('_conditional')) {
+                        // Handle conditional question inputs
+                        const parts = name.split('_');
+                        parts[parts.length - 2] = `option_${newOptionCount}`;
+                        input.name = parts.join('_');
+                    }
+                });
+                // Update the placeholder for the option input field
+                const optionInputField = option.querySelector('input[type="text"]');
+                if (optionInputField) {
+                    optionInputField.placeholder = `Option ${newOptionCount}`;
+                }
+                newOptionCount++;
+            });
+        }
+
+        // Function to renumber conditional options
+        function renumberConditionalOptions(container) {
+            let newOptionCount = 1;
+            container.querySelectorAll('.conditional-option').forEach(option => {
+                option.querySelector('input').name = `group_${groupId}_question_${questionCount}_option_${optionCount}_conditional_option_${newOptionCount}`;
+                option.querySelector('input').placeholder = `Option ${newOptionCount}`;
+                newOptionCount++;
+            });
+        }
+
+        addGroupButton.addEventListener('click', addGroup);
+    });
+</script>
+
+
+
+{% endblock %}

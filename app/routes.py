@@ -1,15 +1,21 @@
-from datetime import datetime
-from enum import Enum
+import traceback
 
-from flask import Flask, render_template, request, redirect, url_for, flash, session, jsonify, abort
-from sqlalchemy import func, desc
+from flask import render_template, request, redirect, url_for, flash, session, make_response, jsonify
+from sqlalchemy import func
+from sqlalchemy.orm import aliased
 
-from app.models import User, Survey, QuestionGroup, Question, QuestionType, QuestionCondition, QuestionOption, \
-    Participant, Answer, SelectedOption, RatingScale
-from sqlalchemy.orm import Session
-from werkzeug.security import check_password_hash
-from sqlalchemy.exc import SQLAlchemyError
+
+from app.models import User, Survey, QuestionGroup, Question, QuestionType, QuestionOption, \
+    Participant, Answer, SelectedOption, RatingScale, ConditionalLink
+
 import logging
+import pytz
+from io import BytesIO
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.lib.units import inch
 
 from app import app, db
 
@@ -37,13 +43,6 @@ question_type_mapping = {
     'rating-scale': 3
 }
 
-
-# @app.route('/', methods=['GET', 'POST'])
-# def index():
-#     if request.method == 'POST':
-#         pass
-#
-#     return render_template('index.html')
 
 
 @app.route('/', methods=['GET', 'POST'])
@@ -142,11 +141,22 @@ def question_type_list():
     return render_template('question_type/question_type_list.html', question_types=question_types)
 
 
+# Handle the lock/unlock action for question types
+@app.route('/question_types/<int:id>/toggle_lock', methods=['POST'])
+def toggle_question_type_lock(id):
+    question_type = QuestionType.query.get_or_404(id)
+    question_type.is_locked = not question_type.is_locked
+    db.session.commit()
+    return jsonify(isLocked=question_type.is_locked)
+
+
 # View a specific question type
 @app.route('/question_types/<int:id>', methods=['GET'])
 def question_type_view(id):
-    question_type = QuestionType.query.get(id)
-    return render_template('question_type/question_type_view.html', question_type=question_type)
+    question_type = QuestionType.query.get_or_404(id)
+    # Pass the is_locked status to the template
+    return render_template('question_type/question_type_view.html', question_type=question_type, is_locked=question_type.is_locked)
+
 
 
 # Create a New Question Type
@@ -200,102 +210,90 @@ def survey_list():
     else:
         surveys = Survey.query.all()  # Default case
 
-    return render_template('survey_list.html', surveys=surveys)
+    # Time zone conversion
+    tz = pytz.timezone('Europe/Amsterdam')
+    for survey in surveys:
+        survey.created_at = survey.created_at.replace(tzinfo=pytz.utc).astimezone(tz)
+        survey.updated_at = survey.updated_at.replace(tzinfo=pytz.utc).astimezone(tz)
+
+    return render_template('survey/survey_list.html', surveys=surveys)
 
 
 # Route for viewing a specific survey
 @app.route('/surveys/<int:survey_id>/view', methods=['GET'])
 def survey_view(survey_id):
-    survey_submissions = []  # Initialize it before the try block
     try:
-        # Retrieve the survey and its related entities from the database based on survey_id
-        survey = Survey.query.get(survey_id)
+        app.logger.info(f"Fetching survey with ID {survey_id}")
+        survey = Survey.query.get_or_404(survey_id)
+        tz = pytz.timezone('Europe/Amsterdam')
 
-        if not survey:
-            # Handle the case where the survey does not exist
-            flash('Survey not found.', 'danger')
-            return redirect(url_for('survey_list'))  # Redirect to a list of surveys or another appropriate page
-
-        # Fetch related entities
         question_groups = QuestionGroup.query.filter_by(survey_id=survey.id).all()
-        participants = Participant.query.filter_by(survey_id=survey.id).all()
-        answers = Answer.query.filter_by(survey_id=survey.id).all()
-
-        # Create a dictionary to store question data with options and conditional questions
         question_data = {}
+        conditional_question_ids = set()
 
         for group in question_groups:
             questions = Question.query.filter_by(group_id=group.id).all()
-            question_data[group] = []
-
+            group_data = []
             for question in questions:
-                question_dict = {'question': question, 'options': [], 'conditional_questions': []}
+                if question.id in conditional_question_ids:
+                    continue
 
-                if question.question_type_id == 2:  # Multiple-choice question
+                question_dict = {
+                    'question': question,
+                    'options': [],
+                    'rating_scale': None
+                }
+
+                if question.question_type_id == 2:  # Multiple-choice
                     options = QuestionOption.query.filter_by(question_id=question.id).all()
                     for option in options:
-                        option_dict = {'option': option, 'conditional_questions': []}
+                        option_dict = {
+                            'option': option,
+                            'conditional_questions': []
+                        }
 
-                        # Fetch conditional questions for this option if any
-                        conditional_questions = Question.query.join(
-                            QuestionCondition, Question.id == QuestionCondition.dependent_question_id
-                        ).filter(QuestionCondition.parent_question_id == question.id,
-                                 QuestionCondition.condition == option.option_text).all()
-
-                        for cond_question in conditional_questions:
-                            option_dict['conditional_questions'].append(cond_question)
-
+                        conditional_links = ConditionalLink.query.filter_by(parent_option_id=option.id).all()
+                        for link in conditional_links:
+                            cond_question = Question.query.get(link.child_question_id)
+                            if cond_question:
+                                option_dict['conditional_questions'].append(cond_question)
+                                conditional_question_ids.add(cond_question.id)
                         question_dict['options'].append(option_dict)
 
-                elif question.question_type_id == 3:  # Rating scale question
+                elif question.question_type_id == 3:  # Rating scale
                     rating_scale = RatingScale.query.filter_by(question_id=question.id).first()
                     question_dict['rating_scale'] = rating_scale
 
-                # Fetch conditional questions for this question if any
-                conditional_questions = Question.query.join(
-                    QuestionCondition, Question.id == QuestionCondition.dependent_question_id
-                ).filter(QuestionCondition.parent_question_id == question.id).all()
+                group_data.append(question_dict)
 
-                for cond_question in conditional_questions:
-                    question_dict['conditional_questions'].append(cond_question)
+            question_data[group] = group_data
 
-                question_data[group].append(question_dict)
+        # Determine sort order
+        sort_by = request.args.get('sort_by', 'date_taken_desc')
+        order_by = func.max(Answer.created_at).desc() if sort_by == 'date_taken_desc' else func.max(Answer.created_at).asc()
 
-        # Fetch the timestamps of each survey submission
         survey_submissions = db.session.query(
             Participant.id,
             func.max(Answer.created_at).label('submission_time')
         ).join(Answer, Answer.participant_id == Participant.id) \
             .filter(Participant.survey_id == survey_id) \
             .group_by(Participant.id) \
-            .order_by(func.max(Answer.created_at).desc()) \
+            .order_by(order_by) \
             .all()
 
-        # Sort by parameter
-        sort_by = request.args.get('sort_by', 'date_taken_desc')
-        survey_submissions_query = db.session.query(
-            Participant.id,
-            func.max(Answer.created_at).label('submission_time')
-        ).join(Answer, Answer.participant_id == Participant.id) \
-            .filter(Participant.survey_id == survey_id) \
-            .group_by(Participant.id)
-
-        # Apply sorting
-        if sort_by == 'date_taken_asc':
-            survey_submissions = survey_submissions_query.order_by('submission_time').all()
-        elif sort_by == 'date_taken_desc':
-            survey_submissions = survey_submissions_query.order_by(desc('submission_time')).all()
-        else:
-            survey_submissions = survey_submissions_query.order_by(desc('submission_time')).all()  # Default case
+        # Convert submission times to Amsterdam time zone
+        survey_submissions_converted = [
+            (participant_id, submission_time.replace(tzinfo=pytz.utc).astimezone(tz))
+            for participant_id, submission_time in survey_submissions
+        ]
 
     except Exception as e:
         logging.error(f"An error occurred while fetching the survey details: {str(e)}")
         flash('An error occurred while fetching the survey details.', 'danger')
         return redirect(url_for('survey_list'))
 
-    return render_template('survey_view.html', survey=survey, question_groups=question_groups,
-                           participants=participants, answers=answers, question_data=question_data,
-                           survey_submissions=survey_submissions)
+    return render_template('survey/survey_view.html', survey=survey, question_groups=question_groups,
+                           question_data=question_data, survey_submissions=survey_submissions_converted)
 
 
 # Route for deleting a specific survey
@@ -394,169 +392,200 @@ def duplicate_survey(survey_id):
     return redirect(url_for('survey_list'))
 
 
-# Route for updating a survey
-@app.route('/survey_update/<int:survey_id>', methods=['GET', 'POST'])
-def survey_update(survey_id):
-    # Fetch the survey by its ID
+# Routes for Update a survey
+@app.route('/update_survey/<int:survey_id>', methods=['GET', 'POST'])
+def update_survey(survey_id):
     survey = Survey.query.get_or_404(survey_id)
-
     if request.method == 'POST':
         try:
-            # Update the survey metadata
-            survey.survey_title = request.form.get('survey_title')
-            survey.survey_description = request.form.get('survey_description')
-            survey.welcome_message = request.form.get('welcome_message')
-            survey.exit_message = request.form.get('exit_message')
+            survey.survey_title = request.form['survey_title']
+            survey.survey_description = request.form['survey_description']
+            survey.welcome_message = request.form['welcome_message']
+            survey.exit_message = request.form['exit_message']
 
-            # Process question groups and questions
-            for group in survey.question_groups:
-                group_title_key = f'group_{group.id}_title'
-                group_description_key = f'group_{group.id}_description'
-                group.group_name = request.form.get(group_title_key)
-                group.group_description = request.form.get(group_description_key)
-
-                # Process questions within the group
-                for question in group.questions:
-                    question_text_key = f'group_{group.id}_question_{question.id}_text'
-                    question_type_key = f'group_{group.id}_question_{question.id}_type'
-                    question_text = request.form.get(question_text_key)
-                    question_type = request.form.get(question_type_key)
-
-                    # Update question attributes
-                    question.question_text = question_text
-                    question_type_id = question_type_mapping.get(question_type, 1)  # Default to 1 if not found
-                    question.question_type_id = question_type_id
-
-                    if question_type_id == 2:
-                        # Handle multiple-choice options
-                        option_texts_key = f'group_{group.id}_question_{question.id}_options'
-                        option_texts = request.form.getlist(option_texts_key)
-
-                        # Clear existing options and add new ones
-                        question.question_options = [QuestionOption(option_text=option_text) for option_text in
-                                                     option_texts if option_text]
-
-                    elif question_type_id == 3:
-                        # Handle rating scale data
-                        min_value_key = f'group_{group.id}_question_{question.id}_min_value'
-                        max_value_key = f'group_{group.id}_question_{question.id}_max_value'
-                        step_key = f'group_{group.id}_question_{question.id}_step'
-
-                        min_value = request.form.get(min_value_key)
-                        max_value = request.form.get(max_value_key)
-                        step = request.form.get(step_key)
-
-                        if min_value and max_value and step:
-                            if question.rating_scale:
-                                rating_scale = question.rating_scale
-                            else:
-                                rating_scale = RatingScale()
-                                question.rating_scale = rating_scale
-
-                            rating_scale.min_value = int(min_value)
-                            rating_scale.max_value = int(max_value)
-                            rating_scale.step = int(step)
-
-                    elif not question_text:
-                        # Delete question if text is empty
-                        db.session.delete(question)
-
-                # Delete question group if no name and no questions
-                if not group.group_name and not group.questions:
-                    db.session.delete(group)
-
-            # Add new question groups
-            new_group_names = request.form.getlist('new_group_name')
-            new_group_descriptions = request.form.getlist('new_group_description')
-
-            for group_name, group_description in zip(new_group_names, new_group_descriptions):
-                if group_name and group_description:
-                    new_group = QuestionGroup(group_name=group_name, group_description=group_description)
-                    survey.question_groups.append(new_group)
-                    db.session.add(new_group)
-
-            # Add new questions
-            new_question_texts = request.form.getlist('new_question_text')
-            new_question_types = request.form.getlist('new_question_type')
-
-            for question_text, question_type in zip(new_question_texts, new_question_types):
-                if question_text and question_type:
-                    new_question = Question(question_text=question_text, question_type_id=question_type)
-                    db.session.add(new_question)
-
+            update_question_groups(survey, request.form)
             db.session.commit()
-            flash('Survey updated successfully', 'success')
+            flash('Survey updated successfully!', 'success')
         except Exception as e:
             db.session.rollback()
-            flash('An error occurred while updating the survey. Please try again.', 'error')
-            app.logger.error(str(e))
+            flash(f'An error occurred: {str(e)}', 'danger')
+            app.logger.error(f"Error updating survey: {e}\n{traceback.format_exc()}")
 
-        return redirect(url_for('survey_update', survey_id=survey_id))
+        return redirect(url_for('survey_list'))  # Assuming 'survey_list' is the correct route name
+    else:
+        # GET: Display the survey update form with existing data
+        return render_template('survey/survey_update.html', survey=survey)
 
-    return render_template('survey_update.html', survey=survey)
+
+def update_question_groups(survey, form):
+    # Track IDs of groups to retain
+    existing_group_ids = {group.id for group in survey.question_groups}
+    processed_group_ids = set()
+
+    # Determine group indices from the form keys
+    group_indices = {key.split('_')[1] for key in form.keys() if key.startswith('group_') and '_name' in key}
+    for group_index in group_indices:
+        group_id = form.get(f'group_{group_index}_id')
+        group_name = form.get(f'group_{group_index}_name')
+        group_description = form.get(f'group_{group_index}_description')
+
+        if group_id.isdigit():
+            # Update existing group
+            group = QuestionGroup.query.get(int(group_id))
+        else:
+            # Create new group
+            group = QuestionGroup(survey=survey)
+            db.session.add(group)
+
+        group.group_name = group_name
+        group.group_description = group_description
+        processed_group_ids.add(group.id)
+
+        # Update questions within the group
+        update_questions(group, form, group_index)
+
+    # Remove groups that were not in the submitted form
+    for group_id in existing_group_ids - processed_group_ids:
+        QuestionGroup.query.filter_by(id=group_id).delete()
+
+
+
+def update_questions(group, form, group_index):
+    existing_question_ids = [question.id for question in group.questions.all()]
+    processed_question_ids = []
+
+    # Iterate over form data to find questions for this group
+    for key, value in form.items():
+        if key.startswith(f'group_{group_index}_question_') and key.endswith('_text'):
+            question_index = key.split('_')[3]
+            question_id_key = f'group_{group_index}_question_{question_index}_id'
+            question_id = form.get(question_id_key, 'new')
+            question_text = value
+            question_type_key = f'group_{group_index}_question_{question_index}_type'
+            question_type = question_type_mapping[form.get(question_type_key)]
+
+            # Check if it's an existing question or a new one
+            if question_id.isdigit():
+                # Existing question
+                question = Question.query.get(int(question_id))
+            else:
+                # New question
+                question = Question(group_id=group.id)
+                db.session.add(question)
+
+            # Update question properties
+            question.question_text = question_text
+            question.question_type_id = question_type
+            processed_question_ids.append(question.id)
+
+            # Handle specific question types
+            if question_type == question_type_mapping['multiple-choice']:
+                update_options(question, form, group_index, question_index)
+            elif question_type == question_type_mapping['rating-scale']:
+                update_rating_scale(question, form, group_index, question_index)
+
+    # Delete questions that were removed
+    for question_id in set(existing_question_ids) - set(processed_question_ids):
+        Question.query.filter_by(id=question_id).delete()
+
+    db.session.commit()  # Commit at the end to make all changes permanent
+
+def update_options(question, form, group_index, question_index):
+    existing_option_ids = [option.id for option in question.question_options]
+    processed_option_ids = []
+
+    # Iterate over form data to find options for the given question
+    for key in form.keys():
+        if key.startswith(f'group_{group_index}_question_{question_index}_option_') and not key.endswith('_id'):
+            option_index = key.split('_')[-1]
+            option_text = form[key]
+            option_id_key = f'group_{group_index}_question_{question_index}_option_{option_index}_id'
+            option_id = form.get(option_id_key, 'new')
+
+            if option_id.isdigit():
+                # Existing option
+                option = QuestionOption.query.get(int(option_id))
+            else:
+                # New option
+                option = QuestionOption(question_id=question.id)
+                db.session.add(option)
+
+            option.option_text = option_text
+            processed_option_ids.append(option.id)
+
+    # Delete options that were removed
+    for option_id in set(existing_option_ids) - set(processed_option_ids):
+        QuestionOption.query.filter_by(id=option_id).delete()
+
+    db.session.commit()  # Ensure to commit changes
+
+
+def update_rating_scale(question, form, group_index, question_index):
+    # Assuming there's at most one rating scale per question
+    rating_scale = question.rating_scale or RatingScale(question_id=question.id)
+
+    min_value_key = f'group_{group_index}_question_{question_index}_min_value'
+    max_value_key = f'group_{group_index}_question_{question_index}_max_value'
+    step_key = f'group_{group_index}_question_{question_index}_step'
+
+    rating_scale.min_value = int(form.get(min_value_key, 1))  # Default to 1 if not provided
+    rating_scale.max_value = int(form.get(max_value_key, 5))  # Default to 5 if not provided
+    rating_scale.step = int(form.get(step_key, 1))  # Default to 1 if not provided
+
+    db.session.add(rating_scale)  # Add or update the rating scale
+    db.session.commit()  # Ensure to commit changes
 
 
 # Route to create a new survey
 @app.route('/create_survey', methods=['GET', 'POST'])
 def create_survey():
-    # Handle GET request: Show survey creation form
-    if request.method == 'GET':
-        return render_template("survey_create.html")
+    if not session.get('is_admin'):
+        flash('Access denied. Please log in as an admin.', 'danger')
+        return redirect(url_for('index'))
 
-    # Handle POST request: Process submitted form data
-    elif request.method == 'POST':
-        # Access control: Check if user is an admin
-        if not session.get('is_admin'):
-            flash('Access denied. Please log in as an admin.', 'danger')
-            return redirect(url_for('index'))
-
-        # Try to create survey from submitted data
+    if request.method == 'POST':
         try:
-            # Extract survey data from form input
             survey_data = extract_survey_data(request.form)
-            # If data is valid, create survey in database
             if survey_data:
                 create_survey_in_database(survey_data)
                 flash('Survey created successfully!', 'success')
                 return redirect(url_for('admin_dashboard'))
             else:
                 flash('Failed to create the survey. Please fill in all required fields.', 'danger')
-        # Handle exceptions and log errors
         except Exception as e:
             flash('Failed to create the survey. Please try again later.', 'danger')
             app.logger.error(f"Error creating survey: {str(e)}")
 
-    # Default response for GET request
-    return render_template("survey_create.html")
+    return render_template("survey/survey_create.html")
 
 
-# Function to extract and organize survey data from form
 def extract_survey_data(form_data):
-    # Retrieve basic survey details
     survey_title = form_data.get('survey_title')
     survey_description = form_data.get('survey_description')
     welcome_message = form_data.get('welcome_message')
     exit_message = form_data.get('exit_message')
 
-    # Ensure all basic details are provided
     if not all([survey_title, survey_description, welcome_message, exit_message]):
+        app.logger.warning("Survey creation failed - Missing basic survey details")
         return None
 
-    # Extract question groups and their details
     question_groups = []
     group_count = 1
+
     while form_data.get(f'group_{group_count}_title'):
         group_name = form_data.get(f'group_{group_count}_title')
         group_description = form_data.get(f'group_{group_count}_description')
+
         questions = extract_questions(form_data, group_count)
-        question_groups.append({
+        question_group = {
             'group_name': group_name,
             'group_description': group_description,
             'questions': questions
-        })
+        }
+
+        question_groups.append(question_group)
         group_count += 1
 
-    # Return organized survey data
     return {
         'survey_title': survey_title,
         'survey_description': survey_description,
@@ -566,53 +595,94 @@ def extract_survey_data(form_data):
     }
 
 
-# Function to extract and organize question details for each group
 def extract_questions(form_data, group_index):
     questions = []
     question_count = 1
-    while form_data.get(f'group_{group_index}_question_{question_count}_text'):
+
+    while True:
         question_text = form_data.get(f'group_{group_index}_question_{question_count}_text')
         question_type = form_data.get(f'group_{group_index}_question_{question_count}_type')
 
-        # Organize question details
+        if question_text is None:
+            break
+
         question = {
             'question_text': question_text,
             'question_type': question_type
         }
 
-        # Handle different question types and their specific data
         if question_type == 'multiple-choice':
-            options = extract_options(form_data, group_index, question_count)
+            options, conditionals = extract_options(form_data, group_index, question_count)
             question['options'] = options
+            question['conditionals'] = conditionals
+
         elif question_type == 'rating-scale':
             min_value = form_data.get(f'group_{group_index}_question_{question_count}_min_value')
             max_value = form_data.get(f'group_{group_index}_question_{question_count}_max_value')
             step = form_data.get(f'group_{group_index}_question_{question_count}_step')
-            question['min_value'] = min_value
-            question['max_value'] = max_value
-            question['step'] = step
+
+            question['min_value'] = int(min_value) if min_value else None
+            question['max_value'] = int(max_value) if max_value else None
+            question['step'] = int(step) if step else None
 
         questions.append(question)
         question_count += 1
+
     return questions
 
 
-# Function to extract options for multiple-choice questions
 def extract_options(form_data, group_index, question_index):
     options = []
+    conditionals = {}
     option_count = 1
-    while form_data.get(f'group_{group_index}_question_{question_index}_option_{option_count}'):
+
+    while True:
         option_text = form_data.get(f'group_{group_index}_question_{question_index}_option_{option_count}')
+        if option_text is None:
+            break
+
+        conditional_question_text = form_data.get(f'group_{group_index}_question_{question_index}_option_{option_count}_conditional_text')
+        conditional_question_type = form_data.get(f'group_{group_index}_question_{question_index}_option_{option_count}_conditional_type')
+
+        # Extract conditional question details
+        conditional_details = {}
+        if conditional_question_text and conditional_question_type:
+            conditional_details['text'] = conditional_question_text
+            conditional_details['type'] = conditional_question_type
+
+            if conditional_question_type == 'multiple-choice':
+                conditional_options = []
+                conditional_option_count = 1
+                while True:
+                    conditional_option_text = form_data.get(
+                        f'group_{group_index}_question_{question_index}_option_{option_count}_conditional_option_{conditional_option_count}')
+                    if conditional_option_text is None:
+                        break
+                    conditional_options.append(conditional_option_text)
+                    conditional_option_count += 1
+                conditional_details['options'] = conditional_options
+
+            elif conditional_question_type == 'rating-scale':
+                min_value = form_data.get(f'group_{group_index}_question_{question_index}_option_{option_count}_conditional_min_value')
+                max_value = form_data.get(f'group_{group_index}_question_{question_index}_option_{option_count}_conditional_max_value')
+                step = form_data.get(f'group_{group_index}_question_{question_index}_option_{option_count}_conditional_step')
+
+                conditional_details['min_value'] = int(min_value) if min_value else None
+                conditional_details['max_value'] = int(max_value) if max_value else None
+                conditional_details['step'] = int(step) if step else None
+
+            conditionals[option_count] = conditional_details
+
         options.append(option_text)
         option_count += 1
-    return options
+
+    return options, conditionals
 
 
-# Function to create the survey in the database using the extracted data
 def create_survey_in_database(survey_data):
     try:
         db.session.begin()
-        # Create a new survey instance
+
         survey = Survey(
             survey_title=survey_data['survey_title'],
             survey_description=survey_data['survey_description'],
@@ -622,8 +692,8 @@ def create_survey_in_database(survey_data):
         )
         db.session.add(survey)
         db.session.flush()
+        app.logger.info(f"Survey '{survey.survey_title}' created with ID {survey.id}")
 
-        # Create question groups and questions for the survey
         for group_data in survey_data['question_groups']:
             question_group = QuestionGroup(
                 group_name=group_data['group_name'],
@@ -632,24 +702,65 @@ def create_survey_in_database(survey_data):
             )
             db.session.add(question_group)
             db.session.flush()
+            app.logger.info(f"Question Group '{question_group.group_name}' created with ID {question_group.id}")
 
-            # Create questions and their specific details based on type
             for question_data in group_data['questions']:
                 question = Question(
                     question_text=question_data['question_text'],
-                    question_type_id=question_type_mapping[question_data['question_type']],
+                    question_type_id=1 if question_data['question_type'] == 'open-ended' else 2 if question_data['question_type'] == 'multiple-choice' else 3,  # Update according to your IDs
                     group_id=question_group.id
                 )
                 db.session.add(question)
                 db.session.flush()
+                app.logger.info(f"Question '{question.question_text}' created with ID {question.id}")
 
-                # Handle creation of options for multiple-choice questions
                 if question_data['question_type'] == 'multiple-choice':
-                    for option_text in question_data.get('options', []):
-                        option = QuestionOption(option_text=option_text, question_id=question.id)
+                    for idx, option_text in enumerate(question_data['options'], start=1):
+                        option = QuestionOption(
+                            option_text=option_text,
+                            question_id=question.id
+                        )
                         db.session.add(option)
+                        db.session.flush()
+                        app.logger.info(f"Option '{option.option_text}' created for Question ID {question.id}")
 
-                # Handle creation of rating scale for rating-scale questions
+                        # Handle conditional questions
+                        if idx in question_data['conditionals']:
+                            conditional_data = question_data['conditionals'][idx]
+                            conditional_question = Question(
+                                question_text=conditional_data['text'],
+                                question_type_id=1 if conditional_data['type'] == 'open-ended' else 2 if
+                                conditional_data['type'] == 'multiple-choice' else 3,
+                                group_id=question_group.id
+                            )
+                            db.session.add(conditional_question)
+                            db.session.flush()
+                            app.logger.info(f"Conditional Question '{conditional_question.question_text}' created with ID {conditional_question.id}")
+
+                            for cond_option_text in conditional_data.get('options', []):
+                                cond_option = QuestionOption(
+                                    option_text=cond_option_text,
+                                    question_id=conditional_question.id
+                                )
+                                db.session.add(cond_option)
+                                # No need to flush here as these are just options
+
+                            # Handle rating scale for conditional questions
+                            if conditional_data['type'] == 'rating-scale':
+                                rating_scale = RatingScale(
+                                    min_value=conditional_data['min_value'],
+                                    max_value=conditional_data['max_value'],
+                                    step=conditional_data['step'],
+                                    question_id=conditional_question.id
+                                )
+                                db.session.add(rating_scale)
+
+                            conditional_link = ConditionalLink(
+                                parent_option_id=option.id,
+                                child_question_id=conditional_question.id
+                            )
+                            db.session.add(conditional_link)
+
                 elif question_data['question_type'] == 'rating-scale':
                     rating_scale = RatingScale(
                         min_value=question_data['min_value'],
@@ -658,209 +769,14 @@ def create_survey_in_database(survey_data):
                         question_id=question.id
                     )
                     db.session.add(rating_scale)
+                    app.logger.info(f"Rating Scale created for Question ID {question.id}")
 
         db.session.commit()
+        app.logger.info("Survey creation process completed successfully.")
     except Exception as e:
         db.session.rollback()
-        app.logger.error(f"Error creating survey: {str(e)}")
+        app.logger.error(f"Error in creating survey: {e}\n{traceback.format_exc()}")
         raise
-
-
-# @app.route('/create_survey', methods=['GET', 'POST'])
-# def create_survey():
-#     if not session.get('is_admin'):
-#         flash('Access denied. Please log in as an admin.', 'danger')
-#         return redirect(url_for('index'))
-#
-#     if request.method == 'POST':
-#         try:
-#             survey_data = extract_survey_data(request.form)
-#             if survey_data:
-#                 create_survey_in_database(survey_data)
-#                 flash('Survey created successfully!', 'success')
-#                 return redirect(url_for('admin_dashboard'))
-#             else:
-#                 flash('Failed to create the survey. Please fill in all required fields.', 'danger')
-#         except Exception as e:
-#             flash('Failed to create the survey. Please try again later.', 'danger')
-#             app.logger.error(f"Error creating survey: {str(e)}")
-#
-#     return render_template("survey_create.html")
-#
-#
-# def extract_survey_data(form_data):
-#     survey_title = form_data.get('survey_title')
-#     survey_description = form_data.get('survey_description')
-#     welcome_message = form_data.get('welcome_message')
-#     exit_message = form_data.get('exit_message')
-#
-#     if not all([survey_title, survey_description, welcome_message, exit_message]):
-#         return None
-#
-#     question_groups = []
-#     group_count = 1
-#
-#     while True:
-#         group_name = form_data.get(f'group_{group_count}_title')
-#         group_description = form_data.get(f'group_{group_count}_description')
-#
-#         if group_name is None:
-#             break
-#
-#         questions = extract_questions(form_data, group_count)
-#         question_group = {
-#             'group_name': group_name,
-#             'group_description': group_description,
-#             'questions': questions
-#         }
-#
-#         question_groups.append(question_group)
-#         group_count += 1
-#
-#     survey_data = {
-#         'survey_title': survey_title,
-#         'survey_description': survey_description,
-#         'welcome_message': welcome_message,
-#         'exit_message': exit_message,
-#         'question_groups': question_groups
-#     }
-#
-#     return survey_data
-#
-#
-# def extract_questions(form_data, group_index):
-#     questions = []
-#     question_count = 1
-#
-#     while True:
-#         question_text = form_data.get(f'group_{group_index}_question_{question_count}_text')
-#         question_type = form_data.get(f'group_{group_index}_question_{question_count}_type')
-#
-#         if question_text is None:
-#             break
-#
-#         question = {
-#             'question_text': question_text,
-#             'question_type': question_type,
-#         }
-#
-#         if question_type == 'multiple-choice':
-#             options = extract_options(form_data, group_index, question_count)
-#             question['options'] = options
-#
-#         elif question_type == 'rating-scale':
-#             min_value = form_data.get(f'group_{group_index}_question_{question_count}_min_value')
-#             max_value = form_data.get(f'group_{group_index}_question_{question_count}_max_value')
-#             step = form_data.get(f'group_{group_index}_question_{question_count}_step')
-#
-#             question['min_value'] = min_value
-#             question['max_value'] = max_value
-#             question['step'] = step
-#
-#         questions.append(question)
-#         question_count += 1
-#
-#     return questions
-#
-#
-# def extract_options(form_data, group_index, question_index):
-#     options = []
-#     option_count = 1
-#
-#     while True:
-#         option_text = form_data.get(f'group_{group_index}_question_{question_index}_option_{option_count}')
-#
-#         if option_text is None:
-#             break
-#
-#         options.append(option_text)
-#         option_count += 1
-#
-#     return options
-#
-#
-# def create_survey_in_database(survey_data):
-#     try:
-#         # Begin a transaction
-#         db.session.begin()
-#
-#         # Create a new survey instance
-#         survey = create_survey_instance(survey_data)
-#         db.session.add(survey)
-#         db.session.flush()  # Flush to generate the survey ID
-#
-#         for group_data in survey_data['question_groups']:
-#             # Create a new question group instance
-#             question_group = create_question_group_instance(group_data, survey.id)
-#             db.session.add(question_group)
-#             db.session.flush()  # Flush to generate the question group ID
-#
-#             for question_data in group_data['questions']:
-#                 # Create a new question instance
-#                 question = create_question_instance(question_data, question_group.id)
-#                 db.session.add(question)
-#                 db.session.flush()  # Flush to generate the question ID
-#
-#                 if question_data['question_type'] == 'multiple-choice':
-#                     create_multiple_choice_options(question_data['options'], question.id)
-#
-#                 elif question_data['question_type'] == 'rating-scale':
-#                     create_rating_scale(question_data, question.id)
-#
-#         # Commit the entire transaction
-#         db.session.commit()
-#
-#     except Exception as e:
-#         # Rollback the transaction if an error occurs
-#         db.session.rollback()
-#         app.logger.error(f"Error creating survey: {str(e)}")
-#
-#
-# def create_survey_instance(survey_data):
-#     return Survey(
-#         survey_title=survey_data['survey_title'],
-#         survey_description=survey_data['survey_description'],
-#         welcome_message=survey_data['welcome_message'],
-#         exit_message=survey_data['exit_message'],
-#         created_by_id=session['user_id']
-#     )
-#
-#
-# def create_question_group_instance(group_data, survey_id):
-#     return QuestionGroup(
-#         group_name=group_data['group_name'],
-#         group_description=group_data['group_description'],
-#         survey_id=survey_id
-#     )
-#
-#
-# def create_question_instance(question_data, group_id):
-#     return Question(
-#         question_text=question_data['question_text'],
-#         question_type_id=question_type_mapping[question_data['question_type']],
-#         group_id=group_id
-#     )
-#
-#
-# def create_multiple_choice_options(options_data, question_id):
-#     for option_text in options_data:
-#         option = QuestionOption(
-#             option_text=option_text,
-#             question_id=question_id
-#         )
-#         db.session.add(option)
-#         db.session.commit()
-#
-#
-# def create_rating_scale(question_data, question_id):
-#     rating_scale = RatingScale(
-#         min_value=question_data['min_value'],
-#         max_value=question_data['max_value'],
-#         step=question_data['step'],
-#         question_id=question_id
-#     )
-#     db.session.add(rating_scale)
-#     db.session.commit()
 
 
 # Routes for taking the survey
@@ -868,12 +784,46 @@ def create_survey_in_database(survey_data):
 def take_survey(survey_id):
     if request.method == 'GET':
         survey = Survey.query.get_or_404(survey_id)
-        return render_template('take_survey.html', survey=survey, question_type_mapping=question_type_mapping)
+        logging.info(f"Fetched survey: {survey.survey_title}")
+
+        question_groups = []
+        conditional_questions_mapping = {}
+        conditional_questions_details = {}
+
+        for group in survey.question_groups:
+            questions = []
+            for question in group.questions:
+                if not any(link.parent_option_id for link in question.conditional_links):
+                    questions.append(question)
+                    for option in question.question_options:
+                        conditional_link = ConditionalLink.query.filter_by(parent_option_id=option.id).first()
+                        if conditional_link:
+                            cond_question = Question.query.get(conditional_link.child_question_id)
+                            conditional_questions_mapping[option.id] = conditional_link.child_question_id
+                            if cond_question:
+                                conditional_questions_details[conditional_link.child_question_id] = {
+                                    'question_text': cond_question.question_text,
+                                    'question_type_id': cond_question.question_type_id,
+                                    'options': [{'option_text': opt.option_text} for opt in cond_question.question_options] if cond_question.question_type_id == 2 else None,
+                                    'rating_scale': {
+                                        'min_value': cond_question.rating_scale.min_value,
+                                        'max_value': cond_question.rating_scale.max_value,
+                                        'step': cond_question.rating_scale.step
+                                    } if cond_question.question_type_id == 3 else None
+                                }
+            question_groups.append({'group': group, 'questions': questions})
+
+        return render_template('submission/take_survey.html', survey=survey, question_groups=question_groups,
+                               conditional_questions_mapping=conditional_questions_mapping,
+                               conditional_questions_details=conditional_questions_details,
+                               question_type_mapping=question_type_mapping)
 
     elif request.method == 'POST':
+        logging.info(f"POST request for survey with ID: {survey_id}")
         new_participant = Participant(survey_id=survey_id)
         db.session.add(new_participant)
         db.session.flush()  # Flush to get the new participant's ID
+        logging.info(f"New participant added with ID: {new_participant.id}")
 
         # First pass: Create and commit Answer records
         answer_ids = {}
@@ -899,9 +849,11 @@ def take_survey(survey_id):
                         answer_ids[question_id] = answer.id
 
             db.session.commit()
+            logging.info("Answers committed to the database")
 
         except Exception as e:
             db.session.rollback()
+            logging.error(f"Error in take_survey route: {e}")
             flash(f'An error occurred while submitting your survey: {e}', 'danger')
             return redirect(url_for('survey_view', survey_id=survey_id))
 
@@ -924,6 +876,7 @@ def take_survey(survey_id):
 
         except Exception as e:
             db.session.rollback()
+            logging.error(f"Error in take_survey route: {e}")
             flash(f'An error occurred while processing selected options: {e}', 'danger')
 
         flash('Thank you for completing the survey!', 'success')
@@ -950,7 +903,7 @@ def survey_answers(survey_id, participant_id):
                 option_text = QuestionOption.query.get(selected_option.question_option_id).option_text
                 selected_options[answer.id] = option_text
 
-    return render_template('survey_answers.html', survey=survey, participant=participant, answers=answers,
+    return render_template('submission/survey_answers.html', survey=survey, participant=participant, answers=answers,
                            selected_options=selected_options)
 
 
@@ -973,6 +926,103 @@ def delete_submission(survey_id, participant_id):
         logging.error(f"Error deleting submission: {e}")
 
     return redirect(url_for('survey_view', survey_id=survey_id))
+
+
+@app.route('/generate_pdf/<int:survey_id>/<int:participant_id>')
+def generate_pdf(survey_id, participant_id):
+    logging.basicConfig(filename='pdf_generation.log', level=logging.INFO)
+    logger = logging.getLogger('pdf_generation')
+
+    survey = Survey.query.get_or_404(survey_id)
+    participant = Participant.query.get_or_404(participant_id)
+    answers = db.session.query(Answer, Question).join(Question).filter(
+        Answer.survey_id == survey_id,
+        Answer.participant_id == participant_id
+    ).all()
+
+    selected_options = {}
+    for answer, question in answers:
+        if question.question_type_id == 2:  # Multiple-choice
+            selected_option = db.session.query(SelectedOption).filter_by(answer_id=answer.id).first()
+            if selected_option:
+                option_text = QuestionOption.query.get(selected_option.question_option_id).option_text
+                selected_options[answer.id] = option_text
+
+    pdf_buffer = BytesIO()
+    doc = SimpleDocTemplate(pdf_buffer, pagesize=letter, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
+
+    styles = getSampleStyleSheet()
+    customParagraphStyle = styles["BodyText"].clone('customParagraphStyle')
+    customParagraphStyle.fontSize = 10
+    customParagraphStyle.leading = 12
+
+    # Custom style for group title with red text color
+    groupTitleStyle = styles['Heading2'].clone('groupTitleStyle')
+    groupTitleStyle.textColor = colors.HexColor("#ed1b34")
+
+
+    elements = [
+        Paragraph(survey.survey_title, styles['Title']),
+        Spacer(1, 12),
+        Paragraph(f'Participant ID: {participant.id}', styles['Normal'])
+    ]
+
+    # Define the adjusted table style here
+    tableStyle = TableStyle([
+        # Group title style
+        ('BACKGROUND', (0, 0), (-1, 0), colors.lightgrey),
+
+        # Header style
+        ('BACKGROUND', (0, 1), (-1, 1), colors.lightgrey),
+        ('TEXTCOLOR', (0, 1), (-1, 1), colors.black),
+        ('ALIGN', (0, 1), (-1, 1), 'CENTER'),
+        ('FONTNAME', (0, 1), (-1, 1), 'Helvetica-Bold'),
+
+        # Cell style
+        ('BACKGROUND', (0, 2), (-1, -1), colors.whitesmoke),
+        ('TEXTCOLOR', (0, 2), (-1, -1), colors.grey),
+        ('GRID', (0, 0), (-1, -1), 1, colors.lightgrey),
+        ('WORDWRAP', (0, 0), (-1, -1), 'LTR'),
+        ('LEFTPADDING', (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 3),
+        ('TOPPADDING', (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+    ])
+
+    groupIndex = 1  # Start group numbering
+    for group in survey.question_groups:
+        groupHeader = f'Group {groupIndex}: {group.group_name}'
+        data = [[Paragraph(groupHeader, styles['Heading2']), '']]
+        data += [['Question', 'Answer']]  # Column headers
+
+        questionIndex = 1  # Start question numbering for each group
+        for question in group.questions:
+            found_answer = next((answer for answer in answers if answer[1].id == question.id), None)
+            questionText = f'{questionIndex}. {question.question_text}'  # Prepend question number
+            answer_text = 'No answer provided'
+            if found_answer:
+                if question.question_type_id == 1:
+                    answer_text = found_answer[0].answer_text
+                elif question.question_type_id == 2:
+                    answer_text = selected_options.get(found_answer[0].id, 'No answer selected')
+                elif question.question_type_id == 3:
+                    answer_text = str(found_answer[0].answer_rating)
+            data.append([Paragraph(questionText, customParagraphStyle), Paragraph(answer_text, customParagraphStyle)])
+            questionIndex += 1  # Increment question number
+
+        table = Table(data, colWidths=[3.5 * inch, 3.5 * inch])
+        table.setStyle(tableStyle)
+        elements.append(table)
+        elements.append(Spacer(1, 12))
+        groupIndex += 1  # Increment group number
+
+    doc.build(elements)
+
+    logger.info(f'Generated PDF for Survey ID: {survey_id}, Participant ID: {participant_id}')
+    response = make_response(pdf_buffer.getvalue())
+    response.headers['Content-Type'] = 'application/pdf'
+    response.headers['Content-Disposition'] = f'inline; filename="survey_answers_{participant_id}.pdf"'
+    return response
 
 
 if __name__ == '__main__':

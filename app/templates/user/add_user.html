@@ -1,0 +1,28 @@
+<!-- templates/add_user.html -->
+{% extends "layout.html" %}
+
+{% block content %}
+  <h2>Add User</h2>
+  <form method="POST">
+    <div class="form-group">
+      <label for="username">Username:</label>
+      <input type="text" id="username" name="username" class="form-control" required>
+    </div>
+    <div class="form-group">
+      <label for="password">Password:</label>
+      <input type="password" id="password" name="password" class="form-control" required>
+    </div>
+    <div class="form-group">
+      <label for="email">Email:</label>
+      <input type="email" id="email" name="email" class="form-control" required>
+    </div>
+    <div class="form-group">
+      <label for="role">Role:</label>
+      <select id="role" name="role" class="form-control" required>
+        <option value="Creator">Creator</option>
+      </select>
+    </div>
+    <button type="submit" class="btn btn-primary">Add User</button>
+  </form>
+  <a href="{{ url_for('view_users') }}" class="btn btn-secondary">Back to User List</a>
+{% endblock %}

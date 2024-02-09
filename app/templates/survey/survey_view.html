@@ -1,0 +1,164 @@
+{% extends "layout.html" %}
+
+{% block title %}
+  Survey Details
+{% endblock %}
+
+{% block content %}
+
+    <!-- Breadcrumbs -->
+    <nav class="breadcrumbs">
+        <a href="/">Home</a> <span>&gt;</span>
+        <a href="/survey_list">Surveys</a> <span>&gt;</span>
+        <span>View</span>
+    </nav>
+
+    <div class="container">
+    <!-- Button Container -->
+    <div class="button-container">
+        <a class="button-secondary" href="{{ url_for('take_survey', survey_id=survey.id) }}">Take Survey</a>
+        <a href="{{ url_for('update_survey', survey_id=survey.id) }}" class="button-primary">Update Survey</a>
+        <form action="{{ url_for('survey_delete', survey_id=survey.id) }}" method="POST" style="display: inline;">
+            <button type="submit" id="deleteButton" class="button-delete" onclick="return confirm('Are you sure you want to delete this survey?');">Delete Survey</button>
+        </form>
+    </div>
+
+    <!-- Survey Details -->
+    <h1 class="large-title-layout">Survey Details</h1>
+    <div class="card mb-4">
+        <div class="card-body">
+            <h2 class="section-title-layout">Basic Information</h2>
+            <p><strong class="section-layout">Title:</strong> {{ survey.survey_title }}</p>
+            <p><strong class="section-layout">Description:</strong> {{ survey.survey_description }}</p>
+            <p><strong class="section-layout">Welcome Message:</strong> {{ survey.welcome_message }}</p>
+            <p><strong class="section-layout">Exit Message:</strong> {{ survey.exit_message }}</p>
+        </div>
+    </div>
+
+    <!-- Survey Submissions -->
+    <div class="card mb-4">
+            <div class="card-body">
+                <h2 class="large-title-layout">Submissions</h2>
+                <table class="table-layout">
+                    <thead>
+                        <tr>
+                            <th>Participant ID</th>
+                            <th>
+                                Date Taken
+                                <a href="{{ url_for('survey_view', survey_id=survey.id, sort_by='date_taken_asc') }}">&#9650;</a>  <!-- Ascending -->
+                                <a href="{{ url_for('survey_view', survey_id=survey.id, sort_by='date_taken_desc') }}">&#9660;</a> <!-- Descending -->
+                            </th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for participant_id, submission_time in survey_submissions %}
+                            <tr>
+                                <td>
+                                    <a href="{{ url_for('survey_answers', survey_id=survey.id, participant_id=participant_id) }}">
+                                        {{ participant_id }}
+                                    </a>
+                                </td>
+                                <td>
+                                    <a href="{{ url_for('survey_answers', survey_id=survey.id, participant_id=participant_id) }}">
+                                        {{ submission_time.strftime('%Y-%m-%d %H:%M:%S') }}
+                                    </a>
+                                </td>
+                                <td>
+                                    <form method="POST" action="{{ url_for('delete_submission', survey_id=survey.id, participant_id=participant_id) }}" style="display:inline;">
+                                        <button type="submit" class="icon-button icon-button-delete" onclick="return confirmDelete();"></button>
+                                    </form>
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Question Groups -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h2 class="large-title-layout">Question Groups</h2>
+                {% for group in survey.question_groups %}
+                <div class="question-group">
+                    <h3 class="section-title-layout">Group {{ loop.index }}: {{ group.group_name }}</h3>
+                    <p><strong class="section-layout">Description:</strong> {{ group.group_description }}</p>
+                    {% for question_data in question_data[group] %}
+                    <div class="individual-question">
+                        <p><strong>Question {{ loop.index }}:</strong> {{ question_data.question.question_text }}</p>
+                        {% if question_data.question.question_type_id == 2 %}
+                        <div class="options-container">
+                            <strong>Options:</strong>
+                            <ul class="option-list">
+                                {% for option_data in question_data.options %}
+                                <li> <strong>- </strong>
+                                    {{ option_data.option.option_text }}
+                                    {% if option_data.conditional_questions %}
+                                    <div class="conditional-questions">
+                                        {% for cond_question in option_data.conditional_questions %}
+                                        <div class="individual-conditional-question">
+                                            <p><strong>Conditional Question:</strong> {{ cond_question.question_text }}</p>
+                                            {% if cond_question.question_type_id == 2 %}
+                                                <strong>Options:</strong>
+                                                <ul class="option-list">
+                                                    {% for cond_option in cond_question.question_options %}
+                                                    <li>- {{ cond_option.option_text }}</li>
+                                                    {% endfor %}
+                                                </ul>
+                                                {% elif cond_question.question_type_id == 3 %}
+                                                <div class="rating-scale-container">
+                                                    <p><strong>Rating:</strong> {{ cond_question.rating_scale.min_value }} to {{ cond_question.rating_scale.max_value }}, Step: {{ cond_question.rating_scale.step }}</p>
+                                                </div>
+                                            {% endif %}
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% endif %}
+                                </li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                        {% endif %}
+                        {% if question_data.question.question_type_id == 3 %}
+                        <div class="rating-scale-container">
+                            <p><strong>Rating:</strong> {{ question_data.question.rating_scale.min_value }} to {{ question_data.question.rating_scale.max_value }}, Step: {{ question_data.question.rating_scale.step }}</p>
+                        </div>
+                        {% endif %}
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+
+
+        <script>
+            // Function to confirm survey deletion
+            document.querySelector('#deleteButton').addEventListener('click', function(event) {
+                const confirmDelete = confirm('Are you sure you want to delete this survey?');
+                if (!confirmDelete) {
+                    event.preventDefault(); // Prevent form submission if not confirmed
+                }
+            });
+
+            // Function to handle updating the survey
+            document.querySelector('#updateButton').addEventListener('click', function () {
+                const surveyId = this.getAttribute('data-survey-id');
+
+                // Redirect to the update survey route (replace with your actual route)
+                window.location.href = `/surveys/update/${surveyId}`;
+            });
+
+            function confirmDelete(participantId) {
+                if (confirm("Are you sure you want to delete this submission?")) {
+                    // If confirmed, submit the form for deletion
+                    const form = document.querySelector(`form[action*='delete_submission/${participantId}']`);
+                    form.submit();
+                }
+            }
+        </script>
+
+
+  </div> <!-- end of container -->
+{% endblock %}
