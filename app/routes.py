@@ -2,7 +2,6 @@ import traceback
 
 from flask import render_template, request, redirect, url_for, flash, session, make_response, jsonify
 from sqlalchemy import func
-from sqlalchemy.orm import aliased
 
 
 from app.models import User, Survey, QuestionGroup, Question, QuestionType, QuestionOption, \
@@ -13,7 +12,7 @@ import pytz
 from io import BytesIO
 from reportlab.lib.pagesizes import letter
 from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.lib import colors
 from reportlab.lib.units import inch
 
